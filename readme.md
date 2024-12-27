@@ -40,7 +40,7 @@ go get github.com/jonelmawirat/netmigo
 
 Below are some quick examples of how you can use netmigo for connecting to devices, with or without a jump server.
 
-### 1. Using the Provided Sample Logger
+### 1. Connecting To Device Without a Jump Server
 
 The repo contains a [sample logger package](./logger.go) that demonstrates how you can configure [`log/slog`](https:
 
