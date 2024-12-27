@@ -42,7 +42,6 @@ Below are some quick examples of how you can use netmigo for connecting to devic
 
 ### 1. Connecting To Device Without a Jump Server
 
-The repo contains a [sample logger package](./logger.go) that demonstrates how you can configure [`log/slog`](https:
 
 ```go
 package main
