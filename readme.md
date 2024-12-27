@@ -1,7 +1,3 @@
-Below is an **updated** README reflecting the **current supported devices** (`CISCO_IOSXR`, `CISCO_IOSXE`, `LINUX`), as well as the note about the sample files (`samples/iosxr/main.go`, `samples/iosxe/main.go`):
-
----
-
 # netmigo
 
 A Go-based SSH utility library that simplifies common tasks such as:
