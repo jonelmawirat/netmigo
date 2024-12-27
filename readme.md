@@ -176,7 +176,7 @@ func main() {
 
 ## Changing the Logger
 
-By design, **netmigo** receives a `*slog.Logger` instance. That means you can use **any** logging handler that implements [`log/slog`](https:
+By design, **netmigo** receives a `*slog.Logger` instance. That means you can use **any** logging handler that implements [slog](https://pkg.go.dev/log/slog)
 
 ```go
 import (
@@ -205,7 +205,7 @@ Or you can replace slog with your own logger by wrapping your logger to satisfy 
 - **main.go**  
   Example usage of netmigo (connecting to devices, executing commands).
 - **logger.go**  
-  Sample logger setup using [`log/slog`](https:
+  Sample logger setup using [slog](https://pkg.go.dev/log/slog)
 - **netmigo/\***  
   Core library code. Notable files:
   - `base_device.go` — Shared SSH logic (connect, interactive execution, scp download).  
