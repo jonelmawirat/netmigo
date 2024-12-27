@@ -6,7 +6,7 @@ A Go-based SSH utility library that simplifies common tasks such as:
 2. **Executing** commands interactively, capturing the output to a local file.  
 3. **SCP downloading** of files from remote devices.  
 4. **Jump Server** support (SSH proxy) for more complex connectivity scenarios.  
-5. Flexible logging with [slog](https:
+5. Flexible logging with [slog](https://pkg.go.dev/log/slog)
 
 ---
 
@@ -16,7 +16,7 @@ A Go-based SSH utility library that simplifies common tasks such as:
 - **Jump Server** (SSH proxy) support: connect to remote devices via an intermediary server.  
 - **Device Abstraction**: uniform `Device` interface for multiple platforms (`IOSXR`, `Linux`, etc.).  
 - **Interactive Command Execution**: Reads all command output until EOF or timeout, automatically capturing into a temporary file.  
-- **Flexible Logging**: Uses [`log/slog`](https:
+- **Flexible Logging**: Uses [slog](https://pkg.go.dev/log/slog)
 
 ---
 
