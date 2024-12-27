@@ -228,4 +228,4 @@ Or you can replace slog with your own logger by wrapping your logger to satisfy 
 
 ## Support
 
-If you run into any issues, please [open an issue]([https:](https://github.com/jonelmawirat/netmigo/issues)
+If you run into any issues, please [open an issue](https://github.com/jonelmawirat/netmigo/issues)
