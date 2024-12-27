@@ -1,8 +1,12 @@
+Below is an **updated** README reflecting the **current supported devices** (`CISCO_IOSXR`, `CISCO_IOSXE`, `LINUX`), as well as the note about the sample files (`samples/iosxr/main.go`, `samples/iosxe/main.go`):
+
+---
+
 # netmigo
 
 A Go-based SSH utility library that simplifies common tasks such as:
 
-1. **Connecting** to network devices (e.g., Cisco IOS XR) or Linux hosts over SSH.  
+1. **Connecting** to network devices or Linux hosts over SSH.  
 2. **Executing** commands interactively, capturing the output to a local file.  
 3. **SCP downloading** of files from remote devices.  
 4. **Jump Server** support (SSH proxy) for more complex connectivity scenarios.  
@@ -14,7 +18,8 @@ A Go-based SSH utility library that simplifies common tasks such as:
 
 - **Easy SSH** connections with retry logic, timeouts, and password/key-based authentication.  
 - **Jump Server** (SSH proxy) support: connect to remote devices via an intermediary server.  
-- **Device Abstraction**: uniform `Device` interface for multiple platforms (`IOSXR`, `Linux`, etc.).  
+- **Device Abstraction**: uniform `Device` interface for multiple platforms.  
+  - **Current Supported Devices**: `CISCO_IOSXR`, `CISCO_IOSXE`, `LINUX`.
 - **Interactive Command Execution**: Reads all command output until EOF or timeout, automatically capturing into a temporary file.  
 - **Flexible Logging**: Uses [slog](https://pkg.go.dev/log/slog)
 
@@ -32,7 +37,7 @@ go get github.com/jonelmawirat/netmigo
 
 - Go 1.20+  
 - (Optional) An SSH key pair if you're using key-based authentication.  
-- A Cisco device or Linux host reachable over SSH (optionally via a jump server).  
+- A network device or Linux host reachable over SSH (optionally via a jump server).  
 
 ---
 
@@ -40,8 +45,11 @@ go get github.com/jonelmawirat/netmigo
 
 Below are some quick examples of how you can use netmigo for connecting to devices, with or without a jump server.
 
-### 1. Connecting To Device Without a Jump Server
+For **Cisco IOS XR** and **Cisco IOS XE**, see sample files at:
+- `samples/iosxr/main.go`
+- `samples/iosxe/main.go`
 
+### 1. Connecting To Device Without a Jump Server
 
 ```go
 package main
@@ -58,16 +66,12 @@ import (
 
 func main() {
 
-    
     loggerConfig := logger.Config{
         Level:  slog.LevelDebug,
         Format: "json",
     }
-
-    
     slogLogger := logger.NewLogger(loggerConfig)
 
-    
     iosxrCfg := &netmigo.DeviceConfig{
         IP:                "1.2.3.4",
         Port:              "22",
@@ -76,22 +80,18 @@ func main() {
         KeyPath:           "", 
         MaxRetry:          3,
         ConnectionTimeout: 5 * time.Second,
-        
     }
 
-    
     device, err := netmigo.NewDevice(slogLogger, netmigo.CISCO_IOSXR)
     if err != nil {
         log.Fatalf("Failed to create device: %v", err)
     }
 
-    
     if err := device.Connect(iosxrCfg); err != nil {
         log.Fatalf("Connect failed: %v", err)
     }
     defer device.Disconnect()
 
-    
     outputFilePath, err := device.Execute("show version")
     if err != nil {
         log.Fatalf("Command execution failed: %v", err)
@@ -120,14 +120,12 @@ import (
 
 func main() {
 
-    
     loggerConfig := logger.Config{
         Level:  slog.LevelDebug,
         Format: "json",
     }
     slogLogger := logger.NewLogger(loggerConfig)
 
-    
     jumpServerCfg := &netmigo.DeviceConfig{
         IP:                "10.10.10.1",
         Port:              "22",
@@ -138,7 +136,6 @@ func main() {
         ConnectionTimeout: 5 * time.Second,
     }
 
-    
     targetCfg := &netmigo.DeviceConfig{
         IP:                "10.10.10.2",
         Port:              "22",
@@ -150,19 +147,16 @@ func main() {
         JumpServer:        jumpServerCfg, 
     }
 
-    
     device, err := netmigo.NewDevice(slogLogger, netmigo.CISCO_IOSXR)
     if err != nil {
         log.Fatalf("Failed to create device: %v", err)
     }
 
-    
     if err := device.Connect(targetCfg); err != nil {
         log.Fatalf("Connect failed: %v", err)
     }
     defer device.Disconnect()
 
-    
     outputFilePath, err := device.Execute("show logging")
     if err != nil {
         log.Fatalf("Command execution failed: %v", err)
@@ -176,7 +170,7 @@ func main() {
 
 ## Changing the Logger
 
-By design, **netmigo** receives a `*slog.Logger` instance. That means you can use **any** logging handler that implements [slog](https://pkg.go.dev/log/slog)
+By design, **netmigo** receives a `*slog.Logger` instance. That means you can use **any** logging handler that implements [slog](https://pkg.go.dev/log/slog). For example:
 
 ```go
 import (
@@ -186,17 +180,15 @@ import (
     "github.com/jonelmawirat/netmigo/netmigo"
 )
 
-
 textHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
     Level: slog.LevelInfo,
 })
 myCustomLogger := slog.New(textHandler)
 
-
 device, err := netmigo.NewDevice(myCustomLogger, netmigo.LINUX)
 ```
 
-Or you can replace slog with your own logger by wrapping your logger to satisfy the slog interface, or by bridging them (e.g., bridging Zap to slog, etc.).
+Or you can replace slog with your own logger by wrapping your logger to satisfy the slog interface or bridging them (e.g., bridging Zap to slog, etc.).
 
 ---
 
@@ -205,13 +197,17 @@ Or you can replace slog with your own logger by wrapping your logger to satisfy 
 - **main.go**  
   Example usage of netmigo (connecting to devices, executing commands).
 - **logger.go**  
-  Sample logger setup using [slog](https://pkg.go.dev/log/slog)
+  Sample logger setup using [slog](https://pkg.go.dev/log/slog).
 - **netmigo/\***  
   Core library code. Notable files:
   - `base_device.go` — Shared SSH logic (connect, interactive execution, scp download).  
-  - `iosxr.go`, `linux.go` — Platform-specific devices implementing `Device`.  
+  - `iosxr.go`, `iosxe.go`, `linux.go` — Platform-specific devices implementing `Device`.  
   - `connect.go` — Actual connection logic (direct or jump server).  
-  - `device.go` — Device interface definition and `NewDevice` factory.  
+  - `device.go` — Device interface definition and `NewDevice` factory.
+- **samples/iosxr/main.go**  
+  Example usage for Cisco IOS XR.
+- **samples/iosxe/main.go**  
+  Example usage for Cisco IOS XE.
 
 ---
 
@@ -227,4 +223,4 @@ Or you can replace slog with your own logger by wrapping your logger to satisfy 
 
 ## Support
 
-If you run into any issues, please [open an issue](https://github.com/jonelmawirat/netmigo/issues)
+If you run into any issues, please [open an issue](https://github.com/jonelmawirat/netmigo/issues).

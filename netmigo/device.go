@@ -30,6 +30,7 @@ type Platform int
 
 const (
     CISCO_IOSXR Platform = iota
+    CISCO_IOSXE
     LINUX
 )
 
@@ -38,6 +39,12 @@ func NewDevice(logger *slog.Logger, platform Platform) (Device, error) {
     switch platform {
     case CISCO_IOSXR:
         return &Iosxr{
+            BaseDevice: BaseDevice{
+                logger: logger,
+            },
+        }, nil
+    case CISCO_IOSXE:
+        return &Iosxe{
             BaseDevice: BaseDevice{
                 logger: logger,
             },
