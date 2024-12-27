@@ -1,98 +1,48 @@
-# **Netmigo: SSH & SCP for Network Devices**
+# netmigo
 
-**Netmigo** is a Go library for connecting to **network devices** (e.g., Cisco iOSXR, Linux) via SSH, executing commands, and performing SCP downloads. It supports:
+A Go-based SSH utility library that simplifies common tasks such as:
 
-- **Jump/bastion hosts** (nested SSH connections)  
-- **Interactive shell mode** for commands  
-- **Logging** with Go’s `slog`  
-- **Keyboard-interactive or password** authentication  
-- **Time-based timeouts and concurrency** (if needed)
-
-## **Features**
-
-1. **Connect** to a device directly or through a jump server.  
-2. **Execute** commands in **interactive shell** mode:
-   - Perfect for network devices that expect a shell-based prompt.  
-3. **SCP Download** files from the device.  
-4. **Logging** with `slog` for debug, info, and error messages.
+1. **Connecting** to network devices (e.g., Cisco IOS XR) or Linux hosts over SSH.  
+2. **Executing** commands interactively, capturing the output to a local file.  
+3. **SCP downloading** of files from remote devices.  
+4. **Jump Server** support (SSH proxy) for more complex connectivity scenarios.  
+5. Flexible logging with [slog](https:
 
 ---
 
-## **Installation**
+## Features
+
+- **Easy SSH** connections with retry logic, timeouts, and password/key-based authentication.  
+- **Jump Server** (SSH proxy) support: connect to remote devices via an intermediary server.  
+- **Device Abstraction**: uniform `Device` interface for multiple platforms (`IOSXR`, `Linux`, etc.).  
+- **Interactive Command Execution**: Reads all command output until EOF or timeout, automatically capturing into a temporary file.  
+- **Flexible Logging**: Uses [`log/slog`](https:
+
+---
+
+## Getting Started
+
+### Installation
 
 ```bash
 go get github.com/jonelmawirat/netmigo
 ```
 
----
+### Prerequisites
 
-## **Basic Usage**
-
-### 1. **Import the Library**
-
-In your Go code:
-
-```go
-import (
-    "fmt"
-    "log"
-    // Adjust your paths to match where netmigo is located
-    "github.com/jonelmawirat/netmigo/logger"
-    "github.com/jonelmawirat/netmigo/netmigo"
-)
-```
-
-### 2. **Create a DeviceConfig**
-
-A `DeviceConfig` defines how to connect to the device, including IP, port, username/password, optional key-based auth, and an optional jump server config.
-
-```go
-cfg := &netmigo.DeviceConfig{
-    IP:                "1.2.3.4",
-    Port:              "22",
-    Username:          "admin",
-    Password:          "secretpassword",
-    KeyPath:           "",     // if using SSH keys instead
-    MaxRetry:          3,      // number of connection attempts
-    ConnectionTimeout: 5 * time.Second,
-    JumpServer:        nil,    // set if using a jump host
-}
-```
-
-### 3. **Create a Device**
-
-```go
-device, err := netmigo.NewDevice(netmigo.CISCO_IOSXR)
-if err != nil {
-    log.Fatalf("Failed to create iOSXR device: %v", err)
-}
-```
-
-### 4. **Connect & Execute a Command**
-
-```go
-// Connect to the iOSXR device
-if err := device.Connect(cfg); err != nil {
-    log.Fatalf("Connection failed: %v", err)
-}
-defer device.Disconnect()
-
-// Execute a command in interactive shell
-outputFile, err := device.Execute("show version")
-if err != nil {
-    log.Fatalf("Command execution failed: %v", err)
-}
-
-fmt.Println("Output stored in:", outputFile)
-```
-
-The `Execute(...)` method always runs in **interactive shell mode**, returning the path to a **temporary file** containing the command’s output. You can open that file to read or parse the output.
+- Go 1.20+  
+- (Optional) An SSH key pair if you're using key-based authentication.  
+- A Cisco device or Linux host reachable over SSH (optionally via a jump server).  
 
 ---
 
-## **Examples**
+## Usage Examples
 
-### **A. Connecting to iOSXR Without a Jump Server**
+Below are some quick examples of how you can use netmigo for connecting to devices, with or without a jump server.
+
+### 1. Using the Provided Sample Logger
+
+The repo contains a [sample logger package](./logger.go) that demonstrates how you can configure [`log/slog`](https:
 
 ```go
 package main
@@ -100,55 +50,61 @@ package main
 import (
     "fmt"
     "log"
-    "os"
     "time"
-
-    "github.com/jonelmawirat/netmigo/logger"
+    
     "github.com/jonelmawirat/netmigo/netmigo"
+    "github.com/jonelmawirat/netmigo/logger"
+    "log/slog"
 )
 
 func main() {
-    logger.Log.Info("Starting example: direct iOSXR connection")
 
-    // 1) Define the direct DeviceConfig (no jump server)
+    
+    loggerConfig := logger.Config{
+        Level:  slog.LevelDebug,
+        Format: "json",
+    }
+
+    
+    slogLogger := logger.NewLogger(loggerConfig)
+
+    
     iosxrCfg := &netmigo.DeviceConfig{
-        IP:                "10.0.0.50",   // iOSXR device IP
+        IP:                "1.2.3.4",
         Port:              "22",
         Username:          "admin",
-        Password:          "mypassword",
-        KeyPath:           "",
+        Password:          "my-secret-pass",
+        KeyPath:           "", 
         MaxRetry:          3,
         ConnectionTimeout: 5 * time.Second,
-        JumpServer:        nil, // No jump server
+        
     }
 
-    // 2) Create an iOSXR device
-    device, err := netmigo.NewDevice(netmigo.CISCO_IOSXR)
+    
+    device, err := netmigo.NewDevice(slogLogger, netmigo.CISCO_IOSXR)
     if err != nil {
-        log.Fatalf("Failed to create iOSXR device: %v", err)
+        log.Fatalf("Failed to create device: %v", err)
     }
 
-    // 3) Connect
+    
     if err := device.Connect(iosxrCfg); err != nil {
-        log.Fatalf("Failed to connect: %v", err)
+        log.Fatalf("Connect failed: %v", err)
     }
     defer device.Disconnect()
 
-    // 4) Execute a command
-    outputFile, err := device.Execute("show version")
+    
+    outputFilePath, err := device.Execute("show version")
     if err != nil {
         log.Fatalf("Command execution failed: %v", err)
     }
 
-    logger.Log.Info("Command executed", "outputFile", outputFile)
-
-    // Optionally read the file content
-    data, _ := os.ReadFile(outputFile)
-    fmt.Println("Command Output:\n", string(data))
+    fmt.Println("Captured command output in:", outputFilePath)
 }
 ```
 
-### **B. Connecting to iOSXR **with** a Jump Server**
+### 2. Connecting Through a Jump Server
+
+Below is an example where you have a **jump server** (i.e., a bastion host) that you must SSH into first, before connecting to the target device.
 
 ```go
 package main
@@ -156,62 +112,120 @@ package main
 import (
     "fmt"
     "log"
-    "os"
     "time"
-
-    "github.com/jonelmawirat/netmigo/logger"
+    
     "github.com/jonelmawirat/netmigo/netmigo"
+    "github.com/jonelmawirat/netmigo/logger"
+    "log/slog"
 )
 
 func main() {
-    logger.Log.Info("Starting example: iOSXR connection via jump server")
 
-    // 1) Define the jump server config (typically a Linux box or similar)
+    
+    loggerConfig := logger.Config{
+        Level:  slog.LevelDebug,
+        Format: "json",
+    }
+    slogLogger := logger.NewLogger(loggerConfig)
+
+    
     jumpServerCfg := &netmigo.DeviceConfig{
-        IP:                "192.168.10.5",
+        IP:                "10.10.10.1",
         Port:              "22",
-        Username:          "jumpuser",
-        Password:          "jumppassword",
-        KeyPath:           "",
+        Username:          "jumpserver_user",
+        Password:          "",
+        KeyPath:           "/path/to/jumpserver_key", 
         MaxRetry:          3,
         ConnectionTimeout: 5 * time.Second,
     }
 
-    // 2) Define the final iOSXR device config, referencing the jump server
-    iosxrCfg := &netmigo.DeviceConfig{
-        IP:                "10.0.0.50",
+    
+    targetCfg := &netmigo.DeviceConfig{
+        IP:                "10.10.10.2",
         Port:              "22",
         Username:          "admin",
-        Password:          "mypassword",
-        KeyPath:           "",
+        Password:          "target_password",
+        KeyPath:           "", 
         MaxRetry:          3,
         ConnectionTimeout: 5 * time.Second,
-        JumpServer:        jumpServerCfg, // link to jump server
+        JumpServer:        jumpServerCfg, 
     }
 
-    // 3) Create an iOSXR device
-    device, err := netmigo.NewDevice(netmigo.CISCO_IOSXR)
+    
+    device, err := netmigo.NewDevice(slogLogger, netmigo.CISCO_IOSXR)
     if err != nil {
-        log.Fatalf("Failed to create iOSXR device: %v", err)
+        log.Fatalf("Failed to create device: %v", err)
     }
 
-    // 4) Connect (the library will first connect to jump server, then iOSXR)
-    if err := device.Connect(iosxrCfg); err != nil {
-        log.Fatalf("Failed to connect via jump server: %v", err)
+    
+    if err := device.Connect(targetCfg); err != nil {
+        log.Fatalf("Connect failed: %v", err)
     }
     defer device.Disconnect()
 
-    // 5) Execute a command
-    outputFile, err := device.Execute("term len 0\nshow version")
+    
+    outputFilePath, err := device.Execute("show logging")
     if err != nil {
         log.Fatalf("Command execution failed: %v", err)
     }
 
-    logger.Log.Info("Command executed", "outputFile", outputFile)
-
-    // Optionally read the file content
-    data, _ := os.ReadFile(outputFile)
-    fmt.Println("Command Output:\n", string(data))
+    fmt.Println("Captured logging output in:", outputFilePath)
 }
 ```
 
+---
+
+## Changing the Logger
+
+By design, **netmigo** receives a `*slog.Logger` instance. That means you can use **any** logging handler that implements [`log/slog`](https:
+
+```go
+import (
+    "log/slog"
+    "os"
+
+    "github.com/jonelmawirat/netmigo/netmigo"
+)
+
+
+textHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+    Level: slog.LevelInfo,
+})
+myCustomLogger := slog.New(textHandler)
+
+
+device, err := netmigo.NewDevice(myCustomLogger, netmigo.LINUX)
+```
+
+Or you can replace slog with your own logger by wrapping your logger to satisfy the slog interface, or by bridging them (e.g., bridging Zap to slog, etc.).
+
+---
+
+## Project Structure
+
+- **main.go**  
+  Example usage of netmigo (connecting to devices, executing commands).
+- **logger.go**  
+  Sample logger setup using [`log/slog`](https:
+- **netmigo/\***  
+  Core library code. Notable files:
+  - `base_device.go` — Shared SSH logic (connect, interactive execution, scp download).  
+  - `iosxr.go`, `linux.go` — Platform-specific devices implementing `Device`.  
+  - `connect.go` — Actual connection logic (direct or jump server).  
+  - `device.go` — Device interface definition and `NewDevice` factory.  
+
+---
+
+## Contributing
+
+1. Fork the project.  
+2. Create your feature branch (`git checkout -b feature/new-stuff`).  
+3. Commit your changes (`git commit -am 'Add some new stuff'`).  
+4. Push to the branch (`git push origin feature/new-stuff`).  
+5. Create a new Pull Request.  
+
+---
+
+## Support
+
+If you run into any issues, please [open an issue](https:

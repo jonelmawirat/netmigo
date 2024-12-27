@@ -1,8 +1,9 @@
 package netmigo
 
 import (
-    "errors"
-    "time"
+	"errors"
+	"log/slog"
+	"time"
 )
 
 
@@ -33,12 +34,20 @@ const (
 )
 
 
-func NewDevice(platform Platform) (Device, error) {
+func NewDevice(logger *slog.Logger, platform Platform) (Device, error) {
     switch platform {
     case CISCO_IOSXR:
-        return &Iosxr{}, nil
+        return &Iosxr{
+            BaseDevice: BaseDevice{
+                logger: logger,
+            },
+        }, nil
     case LINUX:
-        return &Linux{}, nil
+        return &Linux{
+            BaseDevice: BaseDevice{
+                logger: logger,
+            },
+        }, nil
     default:
         return nil, errors.New("unsupported platform")
     }

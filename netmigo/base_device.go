@@ -1,21 +1,21 @@
 package netmigo
 
 import (
-    "bufio"
-    "errors"
-    "fmt"
-    "io"
-    "os"
-    "time"
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"time"
 
-    "golang.org/x/crypto/ssh"
-
-    "github.com/jonelmawirat/netmigo/logger"
+	"golang.org/x/crypto/ssh"
 )
 
 
 type BaseDevice struct {
     client *ssh.Client
+    logger *slog.Logger
 }
 
 
@@ -31,7 +31,7 @@ func (b *BaseDevice) connectBase(cfg *DeviceConfig) error {
 
 func (b *BaseDevice) disconnectBase() {
     if b.client != nil {
-        logger.Log.Info("Closing SSH connection")
+        b.logger.Info("Closing SSH connection")
         b.client.Close()
     }
 }
@@ -44,7 +44,7 @@ func (b *BaseDevice) interactiveExecute(command string, timeoutSeconds int) (str
 
     session, err := b.client.NewSession()
     if err != nil {
-        logger.Log.Error("Failed to create SSH session", "error", err)
+        b.logger.Error("Failed to create SSH session", "error", err)
         return "", fmt.Errorf("failed to create session: %w", err)
     }
     defer session.Close()
@@ -55,51 +55,51 @@ func (b *BaseDevice) interactiveExecute(command string, timeoutSeconds int) (str
         ssh.TTY_OP_ISPEED: 14400,
         ssh.TTY_OP_OSPEED: 14400,
     }
-    logger.Log.Debug("Requesting PTY")
+    b.logger.Debug("Requesting PTY")
     if err := session.RequestPty("xterm", 80, 40, modes); err != nil {
-        logger.Log.Error("Failed to request pseudo terminal", "error", err)
+        b.logger.Error("Failed to request pseudo terminal", "error", err)
         return "", fmt.Errorf("failed to request pseudo terminal: %w", err)
     }
 
     
     stdinPipe, err := session.StdinPipe()
     if err != nil {
-        logger.Log.Error("Failed to obtain stdin pipe", "error", err)
+        b.logger.Error("Failed to obtain stdin pipe", "error", err)
         return "", fmt.Errorf("failed to obtain stdin pipe: %w", err)
     }
     stdoutPipe, err := session.StdoutPipe()
     if err != nil {
-        logger.Log.Error("Failed to obtain stdout pipe", "error", err)
+        b.logger.Error("Failed to obtain stdout pipe", "error", err)
         return "", fmt.Errorf("failed to obtain stdout pipe: %w", err)
     }
 
-    logger.Log.Debug("Starting interactive shell")
+    b.logger.Debug("Starting interactive shell")
     if err := session.Shell(); err != nil {
-        logger.Log.Error("Failed to start shell", "error", err)
+        b.logger.Error("Failed to start shell", "error", err)
         return "", fmt.Errorf("failed to start shell: %w", err)
     }
 
     _, _ = stdinPipe.Write([]byte("\n"))
     time.Sleep(3 * time.Second)
 
-    logger.Log.Debug("Sending command", "command", command)
+    b.logger.Debug("Sending command", "command", command)
     if n, err := stdinPipe.Write([]byte(command + "\n")); err != nil {
-        logger.Log.Error("Failed to send command", "error", err)
+        b.logger.Error("Failed to send command", "error", err)
         return "", fmt.Errorf("failed to send command: %w", err)
     } else {
-        logger.Log.Debug("Command write successful", "bytesWritten", n)
+        b.logger.Debug("Command write successful", "bytesWritten", n)
     }
 
-    logger.Log.Debug("Sending exit command")
+    b.logger.Debug("Sending exit command")
     if n, err := stdinPipe.Write([]byte("exit\n")); err != nil {
-        logger.Log.Error("Failed to send exit command", "error", err)
+        b.logger.Error("Failed to send exit command", "error", err)
         return "", fmt.Errorf("failed to send exit command: %w", err)
     } else {
-        logger.Log.Debug("Exit write successful", "bytesWritten", n)
+        b.logger.Debug("Exit write successful", "bytesWritten", n)
     }
 
     if err := stdinPipe.Close(); err != nil {
-        logger.Log.Error("Failed to close stdin pipe", "error", err)
+        b.logger.Error("Failed to close stdin pipe", "error", err)
         return "", fmt.Errorf("failed to close stdin pipe: %w", err)
     }
 
@@ -113,7 +113,7 @@ func (b *BaseDevice) interactiveExecute(command string, timeoutSeconds int) (str
     
     tempFile, err := os.CreateTemp("", "cmd_output_*.txt")
     if err != nil {
-        logger.Log.Error("Failed to create temp file", "error", err)
+        b.logger.Error("Failed to create temp file", "error", err)
         return "", fmt.Errorf("failed to create temp file: %w", err)
     }
     defer tempFile.Close()
@@ -124,7 +124,7 @@ func (b *BaseDevice) interactiveExecute(command string, timeoutSeconds int) (str
             line, err := reader.ReadString('\n')
             if len(line) > 0 {
                 
-                logger.Log.Debug("Read line from device", "line", line)
+                b.logger.Debug("Read line from device", "line", line)
 
                 
                 if _, werr := tempFile.WriteString(line); werr != nil {
@@ -140,10 +140,10 @@ func (b *BaseDevice) interactiveExecute(command string, timeoutSeconds int) (str
             if err != nil {
                 
                 if err == io.EOF {
-                    logger.Log.Debug("Reached EOF on stdout")
+                    b.logger.Debug("Reached EOF on stdout")
                     done <- nil
                 } else {
-                    logger.Log.Error("Error reading stdout", "error", err)
+                    b.logger.Error("Error reading stdout", "error", err)
                     done <- fmt.Errorf("error reading stdout: %w", err)
                 }
                 return
@@ -154,24 +154,24 @@ func (b *BaseDevice) interactiveExecute(command string, timeoutSeconds int) (str
     
     select {
     case <-timer.C:
-        logger.Log.Error("Timeout: no data received", "timeoutSeconds", timeoutSeconds)
+        b.logger.Error("Timeout: no data received", "timeoutSeconds", timeoutSeconds)
         return "", fmt.Errorf("timeout: no data received for %d seconds", timeoutSeconds)
 
     case err := <-done:
         if err != nil {
-            logger.Log.Error("Goroutine error", "error", err)
+            b.logger.Error("Goroutine error", "error", err)
             return "", err
         }
     }
 
     
-    logger.Log.Debug("Waiting for session to complete")
+    b.logger.Debug("Waiting for session to complete")
     if err := session.Wait(); err != nil {
-        logger.Log.Error("Failed to wait for session", "error", err)
+        b.logger.Error("Failed to wait for session", "error", err)
         return "", fmt.Errorf("failed to wait for session: %w", err)
     }
 
-    logger.Log.Info("Command execution complete", "outputFile", tempFile.Name())
+    b.logger.Info("Command execution complete", "outputFile", tempFile.Name())
     return tempFile.Name(), nil
 }
 
@@ -181,7 +181,7 @@ func (b *BaseDevice) scpDownload(remoteFilePath, localFilePath string) error {
         return errors.New("ssh client is nil; not connected")
     }
 
-    logger.Log.Info("Starting SCP Download",
+    b.logger.Info("Starting SCP Download",
         "remoteFile", remoteFilePath,
         "localFile", localFilePath,
     )
@@ -193,7 +193,7 @@ func (b *BaseDevice) scpDownload(remoteFilePath, localFilePath string) error {
     defer session.Close()
 
     scpCmd := fmt.Sprintf("scp -f %s", remoteFilePath)
-    logger.Log.Debug("Running SCP command", "command", scpCmd)
+    b.logger.Debug("Running SCP command", "command", scpCmd)
 
     writer, err := session.StdinPipe()
     if err != nil {
@@ -216,10 +216,10 @@ func (b *BaseDevice) scpDownload(remoteFilePath, localFilePath string) error {
     go func() {
         scanner := bufio.NewScanner(stderrPipe)
         for scanner.Scan() {
-            logger.Log.Error("SCP STDERR", "line", scanner.Text())
+            b.logger.Error("SCP STDERR", "line", scanner.Text())
         }
         if serr := scanner.Err(); serr != nil {
-            logger.Log.Error("SCP stderr scanner error", "error", serr)
+            b.logger.Error("SCP stderr scanner error", "error", serr)
         }
     }()
 
@@ -238,7 +238,7 @@ func (b *BaseDevice) scpDownload(remoteFilePath, localFilePath string) error {
     if err != nil {
         return fmt.Errorf("failed to read SCP metadata: %w", err)
     }
-    logger.Log.Debug("Raw SCP metadata", "metadata", string(buf[:n]))
+    b.logger.Debug("Raw SCP metadata", "metadata", string(buf[:n]))
 
     _, err = fmt.Sscanf(string(buf[:n]), "C%o %d %s\n", &fileMode, &fileSize, &fileName)
     if err != nil {
@@ -261,7 +261,7 @@ func (b *BaseDevice) scpDownload(remoteFilePath, localFilePath string) error {
         return fmt.Errorf("failed to copy remote file content: %w", err)
     }
     duration := time.Since(start)
-    logger.Log.Info("File transfer complete", "duration", duration)
+    b.logger.Info("File transfer complete", "duration", duration)
 
     
     if _, err := reader.Read(make([]byte, 1)); err != nil && err != io.EOF {
@@ -273,7 +273,7 @@ func (b *BaseDevice) scpDownload(remoteFilePath, localFilePath string) error {
         return fmt.Errorf("SCP session did not exit cleanly: %w", err)
     }
 
-    logger.Log.Info("SCP Download successful",
+    b.logger.Info("SCP Download successful",
         "localFile", localFilePath,
     )
     return nil
