@@ -23,6 +23,11 @@ func (d *Iosxr) Download(remoteFilePath, localFilePath string) error {
     return d.scpDownload(remoteFilePath, localFilePath)
 }
 
+func (d *Iosxr) ExecuteMultiple(commands []string) ([]string, error) {
+    d.BaseDevice.logger.Info("Executing multiple commands on iOSXR", "commandsCount", len(commands))
+    return d.interactiveExecuteMultiple(commands, 10)
+}
+
 func (d *Iosxr) Disconnect() {
     d.BaseDevice.logger.Info("Disconnecting iOSXR device")
     d.disconnectBase()

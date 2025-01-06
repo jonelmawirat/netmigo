@@ -279,3 +279,161 @@ func (b *BaseDevice) scpDownload(remoteFilePath, localFilePath string) error {
     return nil
 }
 
+
+func (b *BaseDevice) interactiveExecuteMultiple(commands []string, timeoutSeconds int) ([]string, error) {
+    if b.client == nil {
+        return nil, errors.New("ssh client is nil; not connected")
+    }
+
+    session, err := b.client.NewSession()
+    if err != nil {
+        b.logger.Error("Failed to create SSH session", "error", err)
+        return nil, fmt.Errorf("failed to create session: %w", err)
+    }
+    defer session.Close()
+
+    
+    modes := ssh.TerminalModes{
+        ssh.ECHO:          0,
+        ssh.TTY_OP_ISPEED: 14400,
+        ssh.TTY_OP_OSPEED: 14400,
+    }
+    b.logger.Debug("Requesting PTY for multiple commands")
+    if err := session.RequestPty("xterm", 80, 40, modes); err != nil {
+        b.logger.Error("Failed to request pseudo terminal", "error", err)
+        return nil, fmt.Errorf("failed to request pseudo terminal: %w", err)
+    }
+
+    
+    stdinPipe, err := session.StdinPipe()
+    if err != nil {
+        b.logger.Error("Failed to obtain stdin pipe", "error", err)
+        return nil, fmt.Errorf("failed to obtain stdin pipe: %w", err)
+    }
+    stdoutPipe, err := session.StdoutPipe()
+    if err != nil {
+        b.logger.Error("Failed to obtain stdout pipe", "error", err)
+        return nil, fmt.Errorf("failed to obtain stdout pipe: %w", err)
+    }
+
+    
+    b.logger.Debug("Starting interactive shell for multiple commands")
+    if err := session.Shell(); err != nil {
+        b.logger.Error("Failed to start shell", "error", err)
+        return nil, fmt.Errorf("failed to start shell: %w", err)
+    }
+
+    
+    reader := bufio.NewReader(stdoutPipe)
+
+    
+    linesCh := make(chan string, 1000)
+    doneCh := make(chan error, 1)
+
+    
+    go func() {
+        defer close(linesCh)
+        for {
+            line, err := reader.ReadString('\n')
+            if len(line) > 0 {
+                linesCh <- line
+            }
+            if err != nil {
+                if err == io.EOF {
+                    b.logger.Debug("Reached EOF on stdout in multiple commands")
+                    doneCh <- nil
+                } else {
+                    b.logger.Error("Error reading stdout in multiple commands", "error", err)
+                    doneCh <- fmt.Errorf("error reading stdout: %w", err)
+                }
+                return
+            }
+        }
+    }()
+
+    
+    _, _ = stdinPipe.Write([]byte("\n"))
+    time.Sleep(1 * time.Second)
+
+    var outputFiles []string
+
+    
+    for _, cmd := range commands {
+        b.logger.Info("Sending command", "command", cmd)
+        if _, err := stdinPipe.Write([]byte(cmd + "\n")); err != nil {
+            b.logger.Error("Failed to send command in multiple commands", "error", err)
+            return nil, fmt.Errorf("failed to send command %q: %w", cmd, err)
+        }
+
+        
+        outputBuf := make([]string, 0)
+        timeout := time.NewTimer(time.Duration(timeoutSeconds) * time.Second)
+
+    COLLECT_LOOP:
+        for {
+            select {
+            case line := <-linesCh:
+                if line == "" {
+                    
+                    break COLLECT_LOOP
+                }
+                
+                outputBuf = append(outputBuf, line)
+                
+                if !timeout.Stop() {
+                    <-timeout.C
+                }
+                timeout.Reset(time.Duration(timeoutSeconds) * time.Second)
+            case <-timeout.C:
+                
+                break COLLECT_LOOP
+            }
+        }
+
+        
+        tempFile, err := os.CreateTemp("", "cmd_output_*.txt")
+        if err != nil {
+            b.logger.Error("Failed to create temp file", "error", err)
+            return nil, fmt.Errorf("failed to create temp file for command %q: %w", cmd, err)
+        }
+        for _, line := range outputBuf {
+            if _, werr := tempFile.WriteString(line); werr != nil {
+                tempFile.Close()
+                return nil, fmt.Errorf("error writing to temp file: %w", werr)
+            }
+        }
+        tempFile.Close()
+
+        b.logger.Info("Command output saved", "command", cmd, "outputFile", tempFile.Name())
+        outputFiles = append(outputFiles, tempFile.Name())
+    }
+
+    
+    b.logger.Debug("Sending exit command after multiple commands")
+    if _, err := stdinPipe.Write([]byte("exit\n")); err != nil {
+        b.logger.Error("Failed to send exit command in multiple commands", "error", err)
+        return nil, fmt.Errorf("failed to send exit command: %w", err)
+    }
+    _ = stdinPipe.Close()
+
+    
+    select {
+    case err := <-doneCh:
+        if err != nil {
+            b.logger.Error("Error from reading goroutine", "error", err)
+            return nil, err
+        }
+    case <-time.After(5 * time.Second):
+        b.logger.Warn("Waited 5s after sending exit, force closing session")
+    }
+
+    b.logger.Debug("Waiting for session to complete (multiple commands)")
+    if err := session.Wait(); err != nil {
+        b.logger.Error("Failed to wait for session (multiple commands)", "error", err)
+        return nil, fmt.Errorf("failed to wait for session: %w", err)
+    }
+
+    b.logger.Info("All commands execution complete in single shell", "count", len(commands))
+    return outputFiles, nil
+}
+
