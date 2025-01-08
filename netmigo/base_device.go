@@ -80,7 +80,7 @@ func (b *BaseDevice) interactiveExecute(command string, timeoutSeconds int) (str
     }
 
     _, _ = stdinPipe.Write([]byte("\n"))
-    time.Sleep(3 * time.Second)
+    time.Sleep(1 * time.Second)
 
     b.logger.Debug("Sending command", "command", command)
     if n, err := stdinPipe.Write([]byte(command + "\n")); err != nil {
