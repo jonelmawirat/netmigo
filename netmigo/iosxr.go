@@ -25,7 +25,7 @@ func (d *Iosxr) Download(remoteFilePath, localFilePath string) error {
 
 func (d *Iosxr) ExecuteMultiple(commands []string) ([]string, error) {
     d.BaseDevice.logger.Info("Executing multiple commands on iOSXR", "commandsCount", len(commands))
-    return d.interactiveExecuteMultiple(commands, 10)
+    return d.interactiveExecuteMultiple(commands, 2)
 }
 
 func (d *Iosxr) Disconnect() {
