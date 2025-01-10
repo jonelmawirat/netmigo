@@ -29,6 +29,6 @@ func (d *Iosxe) Disconnect() {
 }
 
 func (d *Iosxe) ExecuteMultiple(commands []string) ([]string, error) {
-    d.BaseDevice.logger.Info("Executing multiple commands on iOSXR", "commandsCount", len(commands))
+    d.BaseDevice.logger.Info("Executing multiple commands on IOSXE", "commandsCount", len(commands))
     return d.interactiveExecuteMultiple(commands, 2)
 }

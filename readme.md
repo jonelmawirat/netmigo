@@ -15,7 +15,7 @@ A Go-based SSH utility library that simplifies common tasks such as:
 - **Easy SSH** connections with retry logic, timeouts, and password/key-based authentication.  
 - **Jump Server** (SSH proxy) support: connect to remote devices via an intermediary server.  
 - **Device Abstraction**: uniform `Device` interface for multiple platforms.  
-  - **Current Supported Devices**: `CISCO_IOSXR`, `CISCO_IOSXE`, `LINUX`.
+  - **Current Supported Devices**: `CISCO_IOSXR`, `CISCO_IOSXE`, `LINUX`,`CISCO_NXOS`.
 - **Interactive Command Execution**: Reads all command output until EOF or timeout, automatically capturing into a temporary file.  
 - **Flexible Logging**: Uses [slog](https://pkg.go.dev/log/slog)
 
