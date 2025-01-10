@@ -8,6 +8,8 @@ A Go-based SSH utility library that simplifies common tasks such as:
 4. **Jump Server** support (SSH proxy) for more complex connectivity scenarios.  
 5. Flexible logging with [slog](https://pkg.go.dev/log/slog)
 
+**Tested and Working On**: Windows, Mac, and Linux
+
 ---
 
 ## Features
@@ -16,8 +18,8 @@ A Go-based SSH utility library that simplifies common tasks such as:
 - **Jump Server** (SSH proxy) support: connect to remote devices via an intermediary server.  
 - **Device Abstraction**: uniform `Device` interface for multiple platforms.  
   - **Current Supported Devices**: `CISCO_IOSXR`, `CISCO_IOSXE`, `LINUX`,`CISCO_NXOS`.
-- **Interactive Command Execution**: Reads all command output until EOF or timeout, automatically capturing into a temporary file.  
-- **Flexible Logging**: Uses [slog](https://pkg.go.dev/log/slog)
+- **Interactive Command Execution**: Reads all command output until EOF or timeout, automatically capturing into a **temporary file**.  
+- **Flexible Logging**: Uses [slog](https://pkg.go.dev/log/slog).
 
 ---
 
@@ -39,7 +41,7 @@ go get github.com/jonelmawirat/netmigo
 
 ## Usage Examples
 
-Below are some quick examples of how you can use netmigo for connecting to devices, with or without a jump server.
+Below are some quick examples of how you can use **netmigo** for connecting to devices, with or without a jump server.
 
 For **Cisco IOS XR** and **Cisco IOS XE**, see sample files at:
 - `samples/iosxr/main.go`
@@ -164,7 +166,7 @@ func main() {
 
 ### 3. Sending Multiple Commands
 
-```
+```go
 package main
 
 import (
@@ -182,11 +184,8 @@ func main() {
         Level: slog.LevelDebug,
         Format: "json",
     }
+    logger := logger.NewLogger(loggerConfig)
 
-    logger := logger.NewLogger(loggerConfig)  
-    
- 
-    
     iosxrCfg := &netmigo.DeviceConfig{
         IP:                "sandbox-iosxr-1.cisco.com",
         Port:              "22",
@@ -197,28 +196,21 @@ func main() {
         ConnectionTimeout: 5 * time.Second,
     }
 
- 
-    
-    
-    device, err := netmigo.NewDevice(logger,netmigo.CISCO_IOSXR)
+    device, err := netmigo.NewDevice(logger, netmigo.CISCO_IOSXR)
     if err != nil {
-        
         log.Fatalf("Failed to create device: %v", err)
     }
-     
+
     if err := device.Connect(iosxrCfg); err != nil {
         log.Fatalf("Connect failed: %v", err)
     }
     defer device.Disconnect()
 
-        
-    
     iosxrDev, ok := device.(*netmigo.Iosxr)
     if !ok {
         log.Fatal("Device is not iOSXR type!")
     }
- 
-    
+
     commands := []string{
         "term len 0",
         "show logging",
@@ -235,17 +227,14 @@ func main() {
     for i, outFile := range outputFiles {
         fmt.Printf("Output for command %q saved in: %s\n", commands[i], outFile)
     }
-    
-    
 }
-
 ```
 
 ---
 
-## Changing the Logger
+## Changing the Logger & Log Levels
 
-By design, **netmigo** receives a `*slog.Logger` instance. That means you can use **any** logging handler that implements [slog](https://pkg.go.dev/log/slog). For example:
+By design, **netmigo** receives a `*slog.Logger` instance. That means you can use **any** logging handler that implements [slog](https://pkg.go.dev/log/slog). For example, to change the **log level** or **format**, you can do something like:
 
 ```go
 import (
@@ -253,8 +242,28 @@ import (
     "os"
 
     "github.com/jonelmawirat/netmigo/netmigo"
+    "github.com/jonelmawirat/netmigo/logger"
 )
 
+func main() {
+    loggerConfig := logger.Config{
+        Level:  slog.LevelInfo, // Change this to slog.LevelDebug, slog.LevelWarn, etc.
+        Format: "text",         // Or "json"
+    }
+    slogLogger := logger.NewLogger(loggerConfig)
+
+    device, err := netmigo.NewDevice(slogLogger, netmigo.LINUX)
+    if err != nil {
+        panic(err)
+    }
+    
+    // ...
+}
+```
+
+Alternatively, you can create your own handler entirely:
+
+```go
 textHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
     Level: slog.LevelInfo,
 })
@@ -263,7 +272,24 @@ myCustomLogger := slog.New(textHandler)
 device, err := netmigo.NewDevice(myCustomLogger, netmigo.LINUX)
 ```
 
-Or you can replace slog with your own logger by wrapping your logger to satisfy the slog interface or bridging them (e.g., bridging Zap to slog, etc.).
+Or you can replace slog with your own logger by wrapping or bridging it.
+
+---
+
+## Changing the Temporary Output Directory
+
+By default, **netmigo** writes the captured output to a file in your system's temporary folder — i.e., the folder returned by `os.TempDir()`. If you want to change the directory where these files are written, you can adjust your system’s environment variables that `os.TempDir()` relies on. For instance:
+
+- **On Linux/Mac**: Set the `TMPDIR` environment variable  
+- **On Windows**: Set the `TEMP` or `TMP` environment variable
+
+For example, on Linux or Mac:
+
+```bash
+export TMPDIR="/my/preferred/tmp"
+```
+
+Then when you run your Go program, the `os.TempDir()` call will return `/my/preferred/tmp` instead of the default system temp directory.
 
 ---
 
@@ -292,7 +318,13 @@ Or you can replace slog with your own logger by wrapping your logger to satisfy 
 2. Create your feature branch (`git checkout -b feature/new-stuff`).  
 3. Commit your changes (`git commit -am 'Add some new stuff'`).  
 4. Push to the branch (`git push origin feature/new-stuff`).  
-5. Create a new Pull Request.  
+5. Create a new Pull Request.
+
+---
+
+## License
+
+This project is licensed under the [Creative Commons License](LICENSE). See the `LICENSE` file for details.
 
 ---
 
