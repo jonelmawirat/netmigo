@@ -12,7 +12,7 @@ func (d *Nxos) Connect(cfg *DeviceConfig) error {
 
 func (d *Nxos) Execute(command string) (string, error) {
     d.BaseDevice.logger.Info("Executing command on NXOS", "command", command)
-    return d.interactiveExecute(command, 10) 
+    return d.interactiveExecute(command, 5) 
 }
 
 func (d *Nxos) Download(remoteFilePath, localFilePath string) error {
@@ -30,5 +30,5 @@ func (d *Nxos) Disconnect() {
 
 func (d *Nxos) ExecuteMultiple(commands []string) ([]string, error) {
     d.BaseDevice.logger.Info("Executing multiple commands on NXOS", "commandsCount", len(commands))
-    return d.interactiveExecuteMultiple(commands, 2)
+    return d.interactiveExecuteMultiple(commands, 5)
 }

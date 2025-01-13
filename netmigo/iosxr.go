@@ -12,7 +12,7 @@ func (d *Iosxr) Connect(cfg *DeviceConfig) error {
 
 func (d *Iosxr) Execute(command string) (string, error) {
     d.BaseDevice.logger.Info("Executing command on iOSXR", "command", command)
-    return d.interactiveExecute(command, 10) 
+    return d.interactiveExecute(command, 5) 
 }
 
 func (d *Iosxr) Download(remoteFilePath, localFilePath string) error {
@@ -25,7 +25,7 @@ func (d *Iosxr) Download(remoteFilePath, localFilePath string) error {
 
 func (d *Iosxr) ExecuteMultiple(commands []string) ([]string, error) {
     d.BaseDevice.logger.Info("Executing multiple commands on iOSXR", "commandsCount", len(commands))
-    return d.interactiveExecuteMultiple(commands, 2)
+    return d.interactiveExecuteMultiple(commands, 5)
 }
 
 func (d *Iosxr) Disconnect() {
