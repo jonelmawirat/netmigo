@@ -12,7 +12,7 @@ func (d *Iosxe) Connect(cfg *DeviceConfig) error {
 
 func (d *Iosxe) Execute(command string) (string, error) {
     d.BaseDevice.logger.Info("Executing command on IOSXE", "command", command)
-    return d.interactiveExecute(command, 5) 
+    return d.interactiveExecute(command, 30) 
 }
 
 func (d *Iosxe) Download(remoteFilePath, localFilePath string) error {
@@ -30,5 +30,5 @@ func (d *Iosxe) Disconnect() {
 
 func (d *Iosxe) ExecuteMultiple(commands []string) ([]string, error) {
     d.BaseDevice.logger.Info("Executing multiple commands on IOSXE", "commandsCount", len(commands))
-    return d.interactiveExecuteMultiple(commands, 5)
+    return d.interactiveExecuteMultiple(commands, 30)
 }
