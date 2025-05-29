@@ -1,4 +1,4 @@
-package netmigo
+package repository
 
 import (
     "errors"
@@ -7,11 +7,13 @@ import (
     "time"
 
     "golang.org/x/crypto/ssh"
+
+    "github.com/jonelmawirat/netmigo/netmigo/config"
 )
 
-func connectToTarget(cfg *DeviceConfig) (*ssh.Client, error) {
+func connectToTarget(cfg config.DeviceConfig) (*ssh.Client, error) {
     if cfg.JumpServer != nil {
-        jumpClient, err := connectToTarget(cfg.JumpServer)
+        jumpClient, err := connectToTarget(*cfg.JumpServer)
         if err != nil {
             return nil, fmt.Errorf("failed to connect to jump server: %w", err)
         }
@@ -20,9 +22,8 @@ func connectToTarget(cfg *DeviceConfig) (*ssh.Client, error) {
     return connectDirectly(cfg)
 }
 
-
-func connectDirectly(cfg *DeviceConfig) (*ssh.Client, error) {
-    authMethods, err := getAuthMethods(cfg)
+func connectDirectly(cfg config.DeviceConfig) (*ssh.Client, error) {
+    authMethods, err := getAuthMethods(&cfg)
     if err != nil {
         return nil, err
     }
@@ -33,38 +34,35 @@ func connectDirectly(cfg *DeviceConfig) (*ssh.Client, error) {
         HostKeyCallback: ssh.InsecureIgnoreHostKey(),
         Timeout:         cfg.ConnectionTimeout,
     }
-    address := fmt.Sprintf("%s:%s", cfg.IP, cfg.Port)
 
+    address := fmt.Sprintf("%s:%s", cfg.IP, cfg.Port)
     maxRetries := cfg.MaxRetry
     if maxRetries < 1 {
         maxRetries = 1
     }
-    var dialErr error
 
+    var dialErr error
     for i := 0; i < maxRetries; i++ {
         client, err := ssh.Dial("tcp", address, sshConfig)
         if err == nil {
             return client, nil
         }
-
         dialErr = err
-        time.Sleep(time.Second)
+        if i < maxRetries-1 {
+            time.Sleep(1 * time.Second)
+        }
     }
-
     return nil, fmt.Errorf("failed to connect to %s after %d attempts: %w", address, maxRetries, dialErr)
 }
 
-
-
-func connectThroughJumpServer(jumpClient *ssh.Client, cfg *DeviceConfig) (*ssh.Client, error) {
+func connectThroughJumpServer(jumpClient *ssh.Client, cfg config.DeviceConfig) (*ssh.Client, error) {
     address := fmt.Sprintf("%s:%s", cfg.IP, cfg.Port)
-
     netConn, err := jumpClient.Dial("tcp", address)
     if err != nil {
         return nil, fmt.Errorf("jump server dial error: %w", err)
     }
 
-    authMethods, err := getAuthMethods(cfg)
+    authMethods, err := getAuthMethods(&cfg)
     if err != nil {
         return nil, err
     }
@@ -76,20 +74,15 @@ func connectThroughJumpServer(jumpClient *ssh.Client, cfg *DeviceConfig) (*ssh.C
         Timeout:         cfg.ConnectionTimeout,
     }
 
-
     clientConn, chans, reqs, err := ssh.NewClientConn(netConn, address, sshConfig)
     if err != nil {
         return nil, fmt.Errorf("new client conn error: %w", err)
     }
-
-
     return ssh.NewClient(clientConn, chans, reqs), nil
 }
 
-
-func getAuthMethods(cfg *DeviceConfig) ([]ssh.AuthMethod, error) {
+func getAuthMethods(cfg *config.DeviceConfig) ([]ssh.AuthMethod, error) {
     var methods []ssh.AuthMethod
-
     if cfg.KeyPath != "" {
         pk, err := publicKeyFile(cfg.KeyPath)
         if err != nil {
@@ -97,11 +90,9 @@ func getAuthMethods(cfg *DeviceConfig) ([]ssh.AuthMethod, error) {
         }
         methods = append(methods, pk)
     }
-
     if cfg.Password != "" {
         methods = append(methods, ssh.Password(cfg.Password))
     }
-
     if len(methods) == 0 {
         return nil, errors.New("no auth method provided (need KeyPath or Password)")
     }
@@ -119,4 +110,3 @@ func publicKeyFile(file string) (ssh.AuthMethod, error) {
     }
     return ssh.PublicKeys(signer), nil
 }
-

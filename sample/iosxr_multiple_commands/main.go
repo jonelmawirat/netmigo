@@ -16,10 +16,10 @@ func main() {
         Format: "json",
     }
 
-    logger := logger.NewLogger(loggerConfig)  
-    
- 
-    
+    logger := logger.NewLogger(loggerConfig)
+
+
+
     iosxrCfg := &netmigo.DeviceConfig{
         IP:                "sandbox-iosxr-1.cisco.com",
         Port:              "22",
@@ -30,34 +30,32 @@ func main() {
         ConnectionTimeout: 5 * time.Second,
     }
 
- 
-    
-    
+
+
+
     device, err := netmigo.NewDevice(logger,netmigo.CISCO_IOSXR)
     if err != nil {
-        
+
         log.Fatalf("Failed to create device: %v", err)
     }
-     
+
     if err := device.Connect(iosxrCfg); err != nil {
         log.Fatalf("Connect failed: %v", err)
     }
     defer device.Disconnect()
 
-        
-    
+
+
     iosxrDev, ok := device.(*netmigo.Iosxr)
     if !ok {
         log.Fatal("Device is not iOSXR type!")
     }
- 
-    
+
+
     commands := []string{
         "term len 0",
-        "show logging",
-        "show version",
-        "show interfaces brief",
-        "show run",
+		"show logging",
+		"show run",
     }
 
     outputFiles, err := iosxrDev.ExecuteMultiple(commands)
@@ -68,8 +66,8 @@ func main() {
     for i, outFile := range outputFiles {
         fmt.Printf("Output for command %q saved in: %s\n", commands[i], outFile)
     }
-    
-    
+
+
 }
 
 
