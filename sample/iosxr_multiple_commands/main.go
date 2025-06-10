@@ -46,10 +46,6 @@ func main() {
 
 
 
-    iosxrDev, ok := device.(*netmigo.Iosxr)
-    if !ok {
-        log.Fatal("Device is not iOSXR type!")
-    }
 
 
     commands := []string{
@@ -58,7 +54,7 @@ func main() {
 		"show run",
     }
 
-    outputFiles, err := iosxrDev.ExecuteMultiple(commands)
+    outputFiles, err := device.ExecuteMultiple(commands)
     if err != nil {
         log.Fatalf("ExecuteMultiple failed: %v", err)
     }
