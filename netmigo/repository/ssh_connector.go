@@ -3,12 +3,12 @@ package repository
 import (
     "errors"
     "fmt"
+    "net"
     "os"
     "time"
 
-    "golang.org/x/crypto/ssh"
-
     "github.com/jonelmawirat/netmigo/netmigo/config"
+    "golang.org/x/crypto/ssh"
 )
 
 func connectToTarget(cfg config.DeviceConfig) (*ssh.Client, error) {
@@ -27,20 +27,17 @@ func connectDirectly(cfg config.DeviceConfig) (*ssh.Client, error) {
     if err != nil {
         return nil, err
     }
-
     sshConfig := &ssh.ClientConfig{
         User:            cfg.Username,
         Auth:            authMethods,
         HostKeyCallback: ssh.InsecureIgnoreHostKey(),
         Timeout:         cfg.ConnectionTimeout,
     }
-
     address := fmt.Sprintf("%s:%s", cfg.IP, cfg.Port)
     maxRetries := cfg.MaxRetry
     if maxRetries < 1 {
         maxRetries = 1
     }
-
     var dialErr error
     for i := 0; i < maxRetries; i++ {
         client, err := ssh.Dial("tcp", address, sshConfig)
@@ -57,13 +54,37 @@ func connectDirectly(cfg config.DeviceConfig) (*ssh.Client, error) {
 
 func connectThroughJumpServer(jumpClient *ssh.Client, cfg config.DeviceConfig) (*ssh.Client, error) {
     address := fmt.Sprintf("%s:%s", cfg.IP, cfg.Port)
-    netConn, err := jumpClient.Dial("tcp", address)
-    if err != nil {
+
+    connChan := make(chan net.Conn, 1)
+    errChan := make(chan error, 1)
+
+    go func() {
+        c, e := jumpClient.Dial("tcp", address)
+        if e != nil {
+            errChan <- e
+            return
+        }
+        connChan <- c
+    }()
+
+    var netConn net.Conn
+    var timeoutChan <-chan time.Time
+    if cfg.ConnectionTimeout > 0 {
+        timeoutChan = time.After(cfg.ConnectionTimeout)
+    }
+
+    select {
+    case conn := <-connChan:
+        netConn = conn
+    case err := <-errChan:
         return nil, fmt.Errorf("jump server dial error: %w", err)
+    case <-timeoutChan:
+        return nil, fmt.Errorf("timed out connecting to target %s via jump server after %s", address, cfg.ConnectionTimeout)
     }
 
     authMethods, err := getAuthMethods(&cfg)
     if err != nil {
+        netConn.Close()
         return nil, err
     }
 
@@ -76,8 +97,10 @@ func connectThroughJumpServer(jumpClient *ssh.Client, cfg config.DeviceConfig) (
 
     clientConn, chans, reqs, err := ssh.NewClientConn(netConn, address, sshConfig)
     if err != nil {
+        netConn.Close()
         return nil, fmt.Errorf("new client conn error: %w", err)
     }
+
     return ssh.NewClient(clientConn, chans, reqs), nil
 }
 

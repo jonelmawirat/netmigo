@@ -26,6 +26,7 @@ func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command
         return "", fmt.Errorf("failed to create session: %w", err)
     }
     defer session.Close()
+
     modes := ssh.TerminalModes{
         ssh.ECHO:          0,
         ssh.TTY_OP_ISPEED: 14400,
@@ -36,6 +37,7 @@ func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command
         logger.Error("Failed to request pseudo terminal", "error", err)
         return "", fmt.Errorf("failed to request pseudo terminal: %w", err)
     }
+
     stdinPipe, err := session.StdinPipe()
     if err != nil {
         logger.Error("Failed to obtain stdin pipe", "error", err)
@@ -46,30 +48,13 @@ func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command
         logger.Error("Failed to obtain stdout pipe", "error", err)
         return "", fmt.Errorf("failed to obtain stdout pipe: %w", err)
     }
+
     logger.Debug("Starting interactive shell")
     if err := session.Shell(); err != nil {
         logger.Error("Failed to start shell", "error", err)
         return "", fmt.Errorf("failed to start shell: %w", err)
     }
-    _, _ = stdinPipe.Write([]byte("\n"))
-    time.Sleep(1 * time.Second)
-    logger.Debug("Sending command", "command", command)
-    if n, err := stdinPipe.Write([]byte(command + "\n")); err != nil {
-        logger.Error("Failed to send command", "error", err)
-        return "", fmt.Errorf("failed to send command: %w", err)
-    } else {
-        logger.Debug("Command write successful", "bytesWritten", n)
-    }
-    logger.Debug("Sending exit command")
-    if n, err := stdinPipe.Write([]byte("exit\n")); err != nil {
-        logger.Error("Failed to send exit command", "error", err)
-        return "", fmt.Errorf("failed to send exit command: %w", err)
-    } else {
-        logger.Debug("Exit write successful", "bytesWritten", n)
-    }
-    if err := stdinPipe.Close(); err != nil {
-        logger.Error("Failed to close stdin pipe", "error", err)
-    }
+
     timeout := time.Duration(timeoutSeconds) * time.Second
     logger.Debug("Initializing inactivity timer", "duration", timeout)
     timer := time.NewTimer(timeout)
@@ -77,15 +62,14 @@ func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command
         logger.Debug("Stopping inactivity timer (deferred)")
         timer.Stop()
     }()
-    done := make(chan error, 1)
 
+    done := make(chan error, 1)
     if err := os.MkdirAll(outputDirName, 0755); err != nil {
         logger.Error("Failed to create output directory", "directory", outputDirName, "error", err)
         return "", fmt.Errorf("failed to create output directory %s: %w", outputDirName, err)
     }
     outputFileName := fmt.Sprintf("cmd_output_%s.txt", time.Now().Format("20060102150405.000000000"))
     outputFilePath := filepath.Join(outputDirName, outputFileName)
-
     outputFile, err := os.Create(outputFilePath)
     if err != nil {
         logger.Error("Failed to create output file", "path", outputFilePath, "error", err)
@@ -130,21 +114,45 @@ func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command
             }
         }
     }()
+
+    _, _ = stdinPipe.Write([]byte("\n"))
+    time.Sleep(1 * time.Second)
+
+    logger.Debug("Sending command", "command", command)
+    if n, err := stdinPipe.Write([]byte(command + "\n")); err != nil {
+        logger.Error("Failed to send command", "error", err)
+        return "", fmt.Errorf("failed to send command: %w", err)
+    } else {
+        logger.Debug("Command write successful", "bytesWritten", n)
+    }
+
     select {
     case <-timer.C:
-        logger.Error("Timeout: no data received (inactivity timer expired)", "timeoutSeconds", timeoutSeconds)
-        return "", fmt.Errorf("timeout: no data received for %d seconds", timeoutSeconds)
+        logger.Info("Inactivity timer expired, assuming command output is complete.")
     case err := <-done:
         if err != nil {
             logger.Error("Goroutine error", "error", err)
             return "", err
         }
-        logger.Debug("Goroutine finished successfully (EOF or handled error)")
+        logger.Debug("Goroutine finished successfully (EOF received).")
     }
+
+    logger.Debug("Sending exit command")
+    if n, err := stdinPipe.Write([]byte("exit\n")); err != nil {
+        logger.Warn("Failed to send exit command", "error", err)
+    } else {
+        logger.Debug("Exit write successful", "bytesWritten", n)
+    }
+
+    if err := stdinPipe.Close(); err != nil {
+        logger.Error("Failed to close stdin pipe", "error", err)
+    }
+
     logger.Debug("Waiting for session to complete")
     if err := session.Wait(); err != nil {
         logger.Warn("Session wait completed with error (often expected after exit/timeout)", "error", err)
     }
+
     logger.Info("Command execution complete", "outputFile", outputFilePath)
     return outputFilePath, nil
 }
@@ -159,6 +167,7 @@ func ExecutorScpDownload(client *ssh.Client, logger *slog.Logger, remoteFilePath
         return fmt.Errorf("failed to create SSH session: %w", err)
     }
     defer session.Close()
+
     scpCmd := fmt.Sprintf("scp -f %s", remoteFilePath)
     logger.Debug("Running SCP command", "command", scpCmd)
     writer, err := session.StdinPipe()
@@ -185,12 +194,15 @@ func ExecutorScpDownload(client *ssh.Client, logger *slog.Logger, remoteFilePath
             logger.Error("SCP stderr scanner error", "error", serr)
         }
     }()
+
     if _, err := writer.Write([]byte("\x00")); err != nil {
         return fmt.Errorf("failed to send readiness signal: %w", err)
     }
+
     var fileMode int
     var fileSize int64
     var fileName string
+
     buf := make([]byte, 1)
     header := ""
     for {
@@ -203,6 +215,7 @@ func ExecutorScpDownload(client *ssh.Client, logger *slog.Logger, remoteFilePath
             break
         }
     }
+
     lineReader := bufio.NewReader(reader)
     headerRest, err := lineReader.ReadString('\n')
     if err != nil {
@@ -210,18 +223,22 @@ func ExecutorScpDownload(client *ssh.Client, logger *slog.Logger, remoteFilePath
     }
     header += headerRest
     logger.Debug("Raw SCP metadata", "metadata", header)
+
     _, err = fmt.Sscanf(header, "C%o %d %s\n", &fileMode, &fileSize, &fileName)
     if err != nil {
         return fmt.Errorf("failed to parse file metadata from '%s': %w", header, err)
     }
+
     if _, err := writer.Write([]byte("\x00")); err != nil {
         return fmt.Errorf("failed to confirm file creation: %w", err)
     }
+
     localFile, err := os.Create(localFilePath)
     if err != nil {
         return fmt.Errorf("failed to create local file: %w", err)
     }
     defer localFile.Close()
+
     start := time.Now()
     copied, err := io.CopyN(localFile, lineReader, fileSize)
     if err != nil {
@@ -229,17 +246,21 @@ func ExecutorScpDownload(client *ssh.Client, logger *slog.Logger, remoteFilePath
     }
     duration := time.Since(start)
     logger.Info("File transfer content complete", "duration", duration, "bytesCopied", copied)
+
     if _, err := writer.Write([]byte("\x00")); err != nil {
         logger.Warn("Failed to send final ack for content, file might be complete", "error", err)
     }
     _ = writer.Close()
+
     if err := session.Wait(); err != nil {
         logger.Warn("SCP session wait returned an error", "error", err)
     }
+
     logger.Info("SCP Download likely successful", "localFile", localFilePath)
     if err := os.Chmod(localFilePath, os.FileMode(fileMode)); err != nil {
         logger.Warn("Failed to set file mode", "error", err, "mode", fileMode)
     }
+
     return nil
 }
 
@@ -253,6 +274,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
         return nil, fmt.Errorf("failed to create session: %w", err)
     }
     defer session.Close()
+
     modes := ssh.TerminalModes{
         ssh.ECHO:          0,
         ssh.TTY_OP_ISPEED: 14400,
@@ -263,6 +285,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
         logger.Error("Failed to request pseudo terminal", "error", err)
         return nil, fmt.Errorf("failed to request pseudo terminal: %w", err)
     }
+
     stdinPipe, err := session.StdinPipe()
     if err != nil {
         logger.Error("Failed to obtain stdin pipe", "error", err)
@@ -273,17 +296,19 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
         logger.Error("Failed to obtain stdout pipe", "error", err)
         return nil, fmt.Errorf("failed to obtain stdout pipe: %w", err)
     }
+
     logger.Debug("Starting interactive shell for multiple commands")
     if err := session.Shell(); err != nil {
         logger.Error("Failed to start shell", "error", err)
         return nil, fmt.Errorf("failed to start shell: %w", err)
     }
+
     _, _ = stdinPipe.Write([]byte("\n"))
     time.Sleep(500 * time.Millisecond)
+
     outputChannel := make(chan string, 100)
     errorChannel := make(chan error, 1)
     var outputFiles []string
-
     if err := os.MkdirAll(outputDirName, 0755); err != nil {
         logger.Error("Failed to create output directory for multiple commands", "directory", outputDirName, "error", err)
         return nil, fmt.Errorf("failed to create output directory %s: %w", outputDirName, err)
@@ -313,6 +338,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
             }
         }
     }()
+
     initialDrainDuration := 2 * time.Second
     logger.Debug("Initializing initial drain timer", "duration", initialDrainDuration)
     initialDrainTimer := time.NewTimer(initialDrainDuration)
@@ -355,6 +381,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
     } else {
         logger.Debug("Initial drain timer stopped successfully")
     }
+
     cmdTimeoutDuration := time.Duration(timeoutSeconds) * time.Second
     for idx, cmd := range commands {
         sentinel := fmt.Sprintf("__CMD_DONE_%d__", idx)
@@ -363,10 +390,12 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
             logger.Error("Failed to send command in multiple execution", "command", cmd, "error", err)
             return outputFiles, fmt.Errorf("failed to send command %q: %w", cmd, err)
         }
+
         if _, err := stdinPipe.Write([]byte("! " + sentinel + "\n")); err != nil {
             logger.Error("Failed to send sentinel command", "command", cmd, "sentinel", sentinel, "error", err)
             return outputFiles, fmt.Errorf("failed to send sentinel for %q: %w", cmd, err)
         }
+
         currentCmdOutput := ""
         logger.Debug("Initializing command output timer", "command", cmd, "duration", cmdTimeoutDuration)
         cmdOutputTimer := time.NewTimer(cmdTimeoutDuration)
@@ -388,7 +417,6 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
                 } else {
                     currentCmdOutput += line
                 }
-
                 logger.Debug("Attempting to stop command output timer (due to new data)", "command", cmd)
                 if !cmdOutputTimer.Stop() {
                     logger.Debug("Command output timer already fired or stopped (new data path), attempting to drain", "command", cmd)
@@ -456,6 +484,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
         logger.Info("Command output saved (multiple)", "command", cmd, "file", outputFilePath, "sentinelSeen", sentinelSeenInOutput)
         outputFiles = append(outputFiles, outputFilePath)
     }
+
     logger.Debug("Sending exit command after multiple commands")
     if _, err := stdinPipe.Write([]byte("exit\n")); err != nil {
         logger.Error("Failed to send exit command (multiple)", "error", err)
@@ -463,6 +492,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
     if err := stdinPipe.Close(); err != nil {
         logger.Warn("Failed to close stdin pipe (multiple)", "error", err)
     }
+
     finalWaitDuration := 3 * time.Second
     logger.Debug("Initializing final wait timer for reader goroutine to complete", "duration", finalWaitDuration)
     finalWaitTimer := time.NewTimer(finalWaitDuration)
@@ -470,6 +500,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
         logger.Debug("Stopping final wait timer (deferred)")
         finalWaitTimer.Stop()
     }()
+
     select {
     case errReader, ok := <-errorChannel:
         if ok && errReader != nil {
@@ -490,10 +521,12 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
             logger.Warn("Timeout waiting for reader goroutine to finish after exit command and stdin close.")
         }
     }
+
     logger.Debug("Waiting for SSH session (multiple commands) to complete")
     if err := session.Wait(); err != nil {
         logger.Warn("SSH session wait (multiple commands) completed with error (often expected after exit/EOF)", "error", err)
     }
+
     logger.Info("All commands execution complete in single shell (multiple)", "count", len(commands))
     return outputFiles, nil
 }
