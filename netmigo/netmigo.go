@@ -2,13 +2,33 @@ package netmigo
 
 import (
     "log/slog"
+    "time"
 
     "github.com/jonelmawirat/netmigo/netmigo/config"
     "github.com/jonelmawirat/netmigo/netmigo/factory"
+    "github.com/jonelmawirat/netmigo/netmigo/repository"
     "github.com/jonelmawirat/netmigo/netmigo/service"
 )
 
 type DeviceConfig = config.DeviceConfig
+type DeviceConfigOption = config.DeviceConfigOption
+
+var (
+    NewDeviceConfig       = config.NewDeviceConfig
+    WithUsername          = config.WithUsername
+    WithPassword          = config.WithPassword
+    WithKeyPath           = config.WithKeyPath
+    WithPort              = config.WithPort
+    WithJumpServer        = config.WithJumpServer
+    WithMaxRetry          = config.WithMaxRetry
+    WithConnectionTimeout = config.WithConnectionTimeout
+)
+
+type ExecuteOption = repository.ExecuteOption
+
+func WithTimeout(d time.Duration) ExecuteOption {
+    return repository.WithTimeout(d)
+}
 
 const (
     CISCO_IOSXR = config.CISCO_IOSXR

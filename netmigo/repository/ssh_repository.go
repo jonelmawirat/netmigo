@@ -11,8 +11,8 @@ import (
 type SSHRepository interface {
     Connect(cfg config.DeviceConfig) (*ssh.Client, error)
     Disconnect(client *ssh.Client)
-    InteractiveExecute(client *ssh.Client, command string, timeoutSeconds int) (string, error)
-    InteractiveExecuteMultiple(client *ssh.Client, commands []string, timeoutSeconds int) ([]string, error)
+    InteractiveExecute(client *ssh.Client, command string, opts ...ExecuteOption) (string, error)
+    InteractiveExecuteMultiple(client *ssh.Client, commands []string, opts ...ExecuteOption) ([]string, error)
     ScpDownload(client *ssh.Client, remoteFilePath, localFilePath string) error
 }
 
@@ -35,11 +35,15 @@ func (r *sshRepositoryImpl) Disconnect(client *ssh.Client) {
     }
 }
 
-func (r *sshRepositoryImpl) InteractiveExecute(client *ssh.Client, command string, timeoutSeconds int) (string, error) {
+func (r *sshRepositoryImpl) InteractiveExecute(client *ssh.Client, command string, opts ...ExecuteOption) (string, error) {
+    options := NewExecuteOptions(opts...)
+    timeoutSeconds := int(options.Timeout.Seconds())
     return ExecutorInteractiveExecute(client, r.logger, command, timeoutSeconds)
 }
 
-func (r *sshRepositoryImpl) InteractiveExecuteMultiple(client *ssh.Client, commands []string, timeoutSeconds int) ([]string, error) {
+func (r *sshRepositoryImpl) InteractiveExecuteMultiple(client *ssh.Client, commands []string, opts ...ExecuteOption) ([]string, error) {
+    options := NewExecuteOptions(opts...)
+    timeoutSeconds := int(options.Timeout.Seconds())
     return ExecutorInteractiveExecuteMultiple(client, r.logger, commands, timeoutSeconds)
 }
 

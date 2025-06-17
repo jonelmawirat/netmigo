@@ -39,12 +39,12 @@ func (s *LinuxDeviceService) Disconnect() {
     }
 }
 
-func (s *LinuxDeviceService) Execute(command string) (string, error) {
+func (s *LinuxDeviceService) Execute(command string, opts ...repository.ExecuteOption) (string, error) {
     s.logger.Info("Executing command on Linux service", "command", command)
     if s.client == nil {
         return "", errors.New("not connected (LinuxDeviceService)")
     }
-    return s.repo.InteractiveExecute(s.client, command, 10)
+    return s.repo.InteractiveExecute(s.client, command, opts...)
 }
 
 func (s *LinuxDeviceService) Download(remoteFilePath, localFilePath string) error {
@@ -58,10 +58,10 @@ func (s *LinuxDeviceService) Download(remoteFilePath, localFilePath string) erro
     return s.repo.ScpDownload(s.client, remoteFilePath, localFilePath)
 }
 
-func (s *LinuxDeviceService) ExecuteMultiple(commands []string) ([]string, error) {
+func (s *LinuxDeviceService) ExecuteMultiple(commands []string, opts ...repository.ExecuteOption) ([]string, error) {
     s.logger.Info("Executing multiple commands on Linux service", "commandsCount", len(commands))
     if s.client == nil {
         return nil, errors.New("not connected (LinuxDeviceService ExecuteMultiple)")
     }
-    return s.repo.InteractiveExecuteMultiple(s.client, commands, 10)
+    return s.repo.InteractiveExecuteMultiple(s.client, commands, opts...)
 }
