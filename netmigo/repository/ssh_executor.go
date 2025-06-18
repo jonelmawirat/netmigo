@@ -33,7 +33,7 @@ func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command
         ssh.TTY_OP_OSPEED: 14400,
     }
     logger.Debug("Requesting PTY")
-    if err := session.RequestPty("xterm", 80, 40, modes); err != nil {
+    if err := session.RequestPty("vt100", 80, 40, modes); err != nil {
         logger.Error("Failed to request pseudo terminal", "error", err)
         return "", fmt.Errorf("failed to request pseudo terminal: %w", err)
     }
@@ -281,7 +281,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
         ssh.TTY_OP_OSPEED: 14400,
     }
     logger.Debug("Requesting PTY for multiple commands")
-    if err := session.RequestPty("xterm", 80, 40, modes); err != nil {
+    if err := session.RequestPty("vt100", 80, 40, modes); err != nil {
         logger.Error("Failed to request pseudo terminal", "error", err)
         return nil, fmt.Errorf("failed to request pseudo terminal: %w", err)
     }

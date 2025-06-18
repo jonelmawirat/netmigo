@@ -18,16 +18,16 @@ func main() {
     slogLogger := logger.NewLogger(loggerConfig)
 
     jumpServerCfg := netmigo.NewDeviceConfig(
-        "10.10.10.1",
-        netmigo.WithUsername("jumpserver_user"),
-        netmigo.WithKeyPath("/path/to/jumpserver_key"),
+        "babybear.chat",
+        netmigo.WithUsername("root"),
+        netmigo.WithKeyPath("/Users/jmawirat/.ssh/id_rsa"),
         netmigo.WithConnectionTimeout(5*time.Second),
     )
 
     targetCfg := netmigo.NewDeviceConfig(
-        "10.10.10.2",
+        "sandbox-iosxr-1.cisco.com",
         netmigo.WithUsername("admin"),
-        netmigo.WithPassword("target_password"),
+        netmigo.WithPassword("C1sco12345"),
         netmigo.WithConnectionTimeout(5*time.Second),
         netmigo.WithJumpServer(jumpServerCfg),
     )
@@ -42,10 +42,23 @@ func main() {
     }
     defer device.Disconnect()
 
-    outputFilePath, err := device.Execute("show logging")
-    if err != nil {
-        log.Fatalf("Command execution failed: %v", err)
+    commands := []string{
+        "terminal length 0",
+        "show logging",
+		"show run",
     }
 
-    fmt.Println("Captured logging output in:", outputFilePath)
+    outputFiles, err := device.ExecuteMultiple(
+        commands,
+        netmigo.WithTimeout(3*time.Second),
+    )
+    if err != nil {
+        log.Fatalf("ExecuteMultiple failed: %v", err)
+    }
+
+    fmt.Println("Execution successful. Output files:")
+    for i, file := range outputFiles {
+        fmt.Printf("Output for command '%s' is in file: %s\n", commands[i], file)
+    }
+
 }
