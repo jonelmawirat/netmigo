@@ -10,7 +10,7 @@ import (
 
 type SSHRepository interface {
     Connect(cfg config.DeviceConfig) (*ssh.Client, error)
-    Disconnect(client *ssh.Client)
+    Disconnect(client *ssh.Client, jumpCfg *config.DeviceConfig)
     InteractiveExecute(client *ssh.Client, command string, opts ...ExecuteOption) (string, error)
     InteractiveExecuteMultiple(client *ssh.Client, commands []string, opts ...ExecuteOption) ([]string, error)
     ScpDownload(client *ssh.Client, remoteFilePath, localFilePath string) error
@@ -28,10 +28,14 @@ func (r *sshRepositoryImpl) Connect(cfg config.DeviceConfig) (*ssh.Client, error
     return connectToTarget(cfg)
 }
 
-func (r *sshRepositoryImpl) Disconnect(client *ssh.Client) {
+func (r *sshRepositoryImpl) Disconnect(client *ssh.Client, jumpCfg *config.DeviceConfig) {
     if client != nil {
-        r.logger.Info("Closing SSH connection (via repository)")
+        r.logger.Info("Closing SSH connection to target device")
         client.Close()
+    }
+    if jumpCfg != nil {
+        r.logger.Info("Releasing jump server client", "jumpserver", jumpCfg.IP)
+        ReleaseJumpClient(jumpCfg)
     }
 }
 

@@ -25,6 +25,8 @@ func (s *LinuxDeviceService) Connect(cfg *config.DeviceConfig) error {
     s.devCfg = *cfg
     client, err := s.repo.Connect(*cfg)
     if err != nil {
+        // On failure, just return the error. Do NOT release the jump client
+        // as other goroutines might still be using it successfully.
         return err
     }
     s.client = client
@@ -33,10 +35,8 @@ func (s *LinuxDeviceService) Connect(cfg *config.DeviceConfig) error {
 
 func (s *LinuxDeviceService) Disconnect() {
     s.logger.Info("Disconnecting Linux device service")
-    if s.client != nil {
-        s.repo.Disconnect(s.client)
-        s.client = nil
-    }
+    s.repo.Disconnect(s.client, s.devCfg.JumpServer)
+    s.client = nil
 }
 
 func (s *LinuxDeviceService) Execute(command string, opts ...repository.ExecuteOption) (string, error) {

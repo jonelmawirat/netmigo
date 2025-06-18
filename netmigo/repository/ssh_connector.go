@@ -13,9 +13,9 @@ import (
 
 func connectToTarget(cfg config.DeviceConfig) (*ssh.Client, error) {
     if cfg.JumpServer != nil {
-        jumpClient, err := connectToTarget(*cfg.JumpServer)
+        jumpClient, err := getJumpClient(cfg.JumpServer)
         if err != nil {
-            return nil, fmt.Errorf("failed to connect to jump server: %w", err)
+            return nil, fmt.Errorf("failed to get jump server client: %w", err)
         }
         return connectThroughJumpServer(jumpClient, cfg)
     }
