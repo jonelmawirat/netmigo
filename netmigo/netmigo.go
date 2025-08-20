@@ -30,6 +30,10 @@ func WithTimeout(d time.Duration) ExecuteOption {
     return repository.WithTimeout(d)
 }
 
+func WithFirstByteTimeout(d time.Duration) ExecuteOption {
+    return repository.WithFirstByteTimeout(d)
+}
+
 const (
     CISCO_IOSXR = config.CISCO_IOSXR
     CISCO_IOSXE = config.CISCO_IOSXE

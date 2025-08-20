@@ -16,7 +16,7 @@ import (
 
 const outputDirName = "ssh_command_outputs"
 
-func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command string, timeoutSeconds int) (string, error) {
+func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command string, firstByteTimeout, inactivityTimeout time.Duration) (string, error) {
     if client == nil {
         return "", errors.New("ssh client is nil; not connected")
     }
@@ -55,9 +55,8 @@ func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command
         return "", fmt.Errorf("failed to start shell: %w", err)
     }
 
-    timeout := time.Duration(timeoutSeconds) * time.Second
-    logger.Debug("Initializing inactivity timer", "duration", timeout)
-    timer := time.NewTimer(timeout)
+    logger.Debug("Initializing first-byte timer", "duration", firstByteTimeout)
+    timer := time.NewTimer(firstByteTimeout)
     defer func() {
         logger.Debug("Stopping inactivity timer (deferred)")
         timer.Stop()
@@ -99,8 +98,8 @@ func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command
                 } else {
                     logger.Debug("Inactivity timer stopped successfully")
                 }
-                logger.Debug("Resetting inactivity timer", "duration", timeout)
-                timer.Reset(timeout)
+                logger.Debug("Resetting inactivity timer", "duration", inactivityTimeout)
+                timer.Reset(inactivityTimeout)
             }
             if errRead != nil {
                 if errRead == io.EOF {
@@ -264,7 +263,7 @@ func ExecutorScpDownload(client *ssh.Client, logger *slog.Logger, remoteFilePath
     return nil
 }
 
-func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger, commands []string, timeoutSeconds int) ([]string, error) {
+func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger, commands []string, firstByteTimeout, inactivityTimeout time.Duration) ([]string, error) {
     if client == nil {
         return nil, errors.New("ssh client is nil; not connected")
     }
@@ -382,7 +381,6 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
         logger.Debug("Initial drain timer stopped successfully")
     }
 
-    cmdTimeoutDuration := time.Duration(timeoutSeconds) * time.Second
     for idx, cmd := range commands {
         sentinel := fmt.Sprintf("__CMD_DONE_%d__", idx)
         logger.Info("Sending command (multiple)", "command", cmd, "index", idx)
@@ -397,8 +395,8 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
         }
 
         currentCmdOutput := ""
-        logger.Debug("Initializing command output timer", "command", cmd, "duration", cmdTimeoutDuration)
-        cmdOutputTimer := time.NewTimer(cmdTimeoutDuration)
+        logger.Debug("Initializing command output timer", "command", cmd, "duration", firstByteTimeout)
+        cmdOutputTimer := time.NewTimer(firstByteTimeout)
         collecting := true
         var sentinelSeenInOutput bool = false
     COLLECT_LOOP:
@@ -429,10 +427,10 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
                 } else {
                     logger.Debug("Command output timer stopped successfully (new data path)", "command", cmd)
                 }
-                logger.Debug("Resetting command output timer (due to new data)", "command", cmd, "duration", cmdTimeoutDuration)
-                cmdOutputTimer.Reset(cmdTimeoutDuration)
+                logger.Debug("Resetting command output timer (due to new data)", "command", cmd, "duration", inactivityTimeout)
+                cmdOutputTimer.Reset(inactivityTimeout)
             case <-cmdOutputTimer.C:
-                logger.Warn("Command output timer EXPIRED for command", "command", cmd, "timeout", cmdTimeoutDuration, "sentinelSeen", sentinelSeenInOutput)
+                logger.Warn("Command output timer EXPIRED for command", "command", cmd, "timeout", firstByteTimeout, "sentinelSeen", sentinelSeenInOutput)
                 if sentinelSeenInOutput {
                     logger.Info("Timer expired after sentinel was seen. Output collection for command considered complete.", "command", cmd)
                 } else {
