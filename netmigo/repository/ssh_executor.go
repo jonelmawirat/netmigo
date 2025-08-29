@@ -494,29 +494,31 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
     finalWaitDuration := 3 * time.Second
     logger.Debug("Initializing final wait timer for reader goroutine to complete", "duration", finalWaitDuration)
     finalWaitTimer := time.NewTimer(finalWaitDuration)
-    defer func() {
-        logger.Debug("Stopping final wait timer (deferred)")
-        finalWaitTimer.Stop()
-    }()
+    defer finalWaitTimer.Stop()
 
-    select {
-    case errReader, ok := <-errorChannel:
-        if ok && errReader != nil {
-            logger.Error("Final error from reader goroutine after all commands", "error", errReader)
-        } else if !ok {
-            logger.Debug("Reader goroutine's error channel already closed upon final wait.")
-        }
-    default:
-        logger.Debug("Waiting for reader goroutine to complete or final timeout.")
+    draining := true
+    outputChanClosed := false
+    errorChanClosed := false
+
+    for draining && (!outputChanClosed || !errorChanClosed) {
         select {
+        case line, ok := <-outputChannel:
+            if !ok {
+                outputChanClosed = true
+                logger.Debug("Final drain: outputChannel is now closed.")
+            } else {
+                logger.Debug("Draining trailing output", "line", strings.TrimSpace(line))
+            }
         case errReader, ok := <-errorChannel:
-            if ok && errReader != nil {
-                logger.Error("Final error from reader goroutine after all commands (during wait)", "error", errReader)
-            } else if !ok {
-                logger.Info("Reader goroutine completed (error channel closed) during final wait.")
+            if !ok {
+                errorChanClosed = true
+                logger.Debug("Final drain: errorChannel is now closed.")
+            } else if errReader != nil {
+                logger.Error("Final error from reader goroutine after all commands", "error", errReader)
             }
         case <-finalWaitTimer.C:
             logger.Warn("Timeout waiting for reader goroutine to finish after exit command and stdin close.")
+            draining = false
         }
     }
 
