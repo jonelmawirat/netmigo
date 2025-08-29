@@ -341,6 +341,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
     initialDrainDuration := 2 * time.Second
     logger.Debug("Initializing initial drain timer", "duration", initialDrainDuration)
     initialDrainTimer := time.NewTimer(initialDrainDuration)
+    promptLine := ""
     func() {
         logger.Debug("Starting initial output drain loop")
         draining := true
@@ -353,6 +354,10 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
                     break
                 }
                 logger.Debug("Initial drain: discarded line", "line", strings.TrimSpace(line))
+                t := strings.TrimSpace(line)
+                if t != "" {
+                    promptLine = t
+                }
             case <-initialDrainTimer.C:
                 logger.Debug("Initial drain timer expired")
                 draining = false
@@ -382,23 +387,26 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
     }
 
     for idx, cmd := range commands {
-        sentinel := fmt.Sprintf("__CMD_DONE_%d__", idx)
+        sentinel := fmt.Sprintf("!__CMD_DONE_%d__", idx)
         logger.Info("Sending command (multiple)", "command", cmd, "index", idx)
         if _, err := stdinPipe.Write([]byte(cmd + "\n")); err != nil {
             logger.Error("Failed to send command in multiple execution", "command", cmd, "error", err)
             return outputFiles, fmt.Errorf("failed to send command %q: %w", cmd, err)
         }
 
-        if _, err := stdinPipe.Write([]byte("! " + sentinel + "\n")); err != nil {
+        if _, err := stdinPipe.Write([]byte(sentinel + "\n")); err != nil {
             logger.Error("Failed to send sentinel command", "command", cmd, "sentinel", sentinel, "error", err)
             return outputFiles, fmt.Errorf("failed to send sentinel for %q: %w", cmd, err)
         }
 
         currentCmdOutput := ""
-        logger.Debug("Initializing command output timer", "command", cmd, "duration", firstByteTimeout)
-        cmdOutputTimer := time.NewTimer(firstByteTimeout)
+        failsafeTimer := time.NewTimer(firstByteTimeout)
+        inactivityTimer := time.NewTimer(inactivityTimeout)
+        defer failsafeTimer.Stop()
+        defer inactivityTimer.Stop()
+
         collecting := true
-        var sentinelSeenInOutput bool = false
+        var sentinelSeen bool = false
     COLLECT_LOOP:
         for collecting {
             select {
@@ -409,34 +417,45 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
                     break COLLECT_LOOP
                 }
                 logger.Debug("Collecting output for command", "command", cmd, "line", strings.TrimSpace(line))
-                if !sentinelSeenInOutput && strings.Contains(line, sentinel) {
-                    logger.Info("Sentinel string detected in output line", "command", cmd, "sentinel", sentinel, "line", strings.TrimSpace(line))
-                    sentinelSeenInOutput = true
-                } else {
-                    currentCmdOutput += line
-                }
-                logger.Debug("Attempting to stop command output timer (due to new data)", "command", cmd)
-                if !cmdOutputTimer.Stop() {
-                    logger.Debug("Command output timer already fired or stopped (new data path), attempting to drain", "command", cmd)
-                    select {
-                    case <-cmdOutputTimer.C:
-                        logger.Debug("Command output timer channel drained (new data path)", "command", cmd)
-                    default:
-                        logger.Debug("Command output timer channel was empty (new data path)", "command", cmd)
+
+                if strings.Contains(line, sentinel) {
+                    if promptLine != "" && strings.Contains(line, promptLine) && !sentinelSeen {
+                        logger.Info("Sentinel string detected in output line", "command", cmd, "sentinel", sentinel)
+                        sentinelSeen = true
                     }
-                } else {
-                    logger.Debug("Command output timer stopped successfully (new data path)", "command", cmd)
+                    if !inactivityTimer.Stop() {
+                        select {
+                        case <-inactivityTimer.C:
+                        default:
+                        }
+                    }
+                    inactivityTimer.Reset(inactivityTimeout)
+                    continue
                 }
-                logger.Debug("Resetting command output timer (due to new data)", "command", cmd, "duration", inactivityTimeout)
-                cmdOutputTimer.Reset(inactivityTimeout)
-            case <-cmdOutputTimer.C:
-                logger.Warn("Command output timer EXPIRED for command", "command", cmd, "timeout", firstByteTimeout, "sentinelSeen", sentinelSeenInOutput)
-                if sentinelSeenInOutput {
-                    logger.Info("Timer expired after sentinel was seen. Output collection for command considered complete.", "command", cmd)
-                } else {
-                    logger.Warn("Timer expired BEFORE sentinel was seen. Command output might be incomplete or command hung.", "command", cmd)
+
+                currentCmdOutput += line
+
+                if !inactivityTimer.Stop() {
+                    select {
+                    case <-inactivityTimer.C:
+                    default:
+                    }
                 }
+                inactivityTimer.Reset(inactivityTimeout)
+
+            case <-inactivityTimer.C:
+                if sentinelSeen {
+                    logger.Info("Inactivity timer expired after sentinel was seen. Output collection for command considered complete.", "command", cmd)
+                    collecting = false
+                } else {
+                    logger.Debug("Inactivity timer expired but sentinel was not seen. Resetting timer.", "command", cmd)
+                    inactivityTimer.Reset(inactivityTimeout)
+                }
+
+            case <-failsafeTimer.C:
+                logger.Warn("Failsafe timer expired. Command may have hung.", "command", cmd)
                 collecting = false
+
             case errReader, ok := <-errorChannel:
                 if ok && errReader != nil {
                     logger.Error("Error from reader goroutine during command execution", "command", cmd, "error", errReader)
@@ -444,26 +463,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
                     logger.Debug("Error channel closed during command execution collection.", "command", cmd)
                 }
                 collecting = false
-                logger.Debug("Attempting to stop command output timer due to error/EOF from reader", "command", cmd)
-                if !cmdOutputTimer.Stop() {
-                    select {
-                    case <-cmdOutputTimer.C:
-                    default:
-                    }
-                }
             }
-        }
-        logger.Debug("Attempting to stop command output timer (post-collection)", "command", cmd)
-        if !cmdOutputTimer.Stop() {
-            logger.Debug("Command output timer (post-collection) already fired or stopped, attempting to drain", "command", cmd)
-            select {
-            case <-cmdOutputTimer.C:
-                logger.Debug("Command output timer (post-collection) channel drained", "command", cmd)
-            default:
-                logger.Debug("Command output timer (post-collection) channel was empty", "command", cmd)
-            }
-        } else {
-            logger.Debug("Command output timer (post-collection) stopped successfully", "command", cmd)
         }
 
         outputFileName := fmt.Sprintf("cmd_multi_output_%d_%s.txt", idx, time.Now().Format("20060102150405.000000000"))
@@ -479,7 +479,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
             return outputFiles, fmt.Errorf("failed to write to output file for %q: %w", cmd, err)
         }
         outputFile.Close()
-        logger.Info("Command output saved (multiple)", "command", cmd, "file", outputFilePath, "sentinelSeen", sentinelSeenInOutput)
+        logger.Info("Command output saved (multiple)", "command", cmd, "file", outputFilePath, "sentinelSeen", sentinelSeen)
         outputFiles = append(outputFiles, outputFilePath)
     }
 

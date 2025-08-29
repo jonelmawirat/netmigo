@@ -36,8 +36,12 @@ func main() {
 
     commands := []string{
         "terminal length 0",
+		"ping 8.8.8.8",
+        "show version",
+		"ping 9.9.9.9",
+        "show run",
+		"ping 5.5.5.5",
         "show logging",
-		"show run",
     }
 
     outputFiles, err := device.ExecuteMultiple(
