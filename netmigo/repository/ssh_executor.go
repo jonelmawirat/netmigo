@@ -410,40 +410,37 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
     }
 
     for idx, cmd := range commands {
-        sentinel := fmt.Sprintf("!__CMD_DONE_%d__", idx)
         logger.Info("Sending command (multiple)", "command", cmd, "index", idx)
         if _, err := stdinPipe.Write([]byte(cmd + "\n")); err != nil {
             logger.Error("Failed to send command in multiple execution", "command", cmd, "error", err)
             return outputFiles, fmt.Errorf("failed to send command %q: %w", cmd, err)
         }
 
-        if _, err := stdinPipe.Write([]byte(sentinel + "\n")); err != nil {
-            logger.Error("Failed to send sentinel command", "command", cmd, "sentinel", sentinel, "error", err)
-            return outputFiles, fmt.Errorf("failed to send sentinel for %q: %w", cmd, err)
-        }
-
         currentCmdOutput := ""
-        failsafeTimer := time.NewTimer(firstByteTimeout)
-        inactivityTimer := time.NewTimer(inactivityTimeout)
-        defer failsafeTimer.Stop()
-        defer inactivityTimer.Stop()
+        commandTimer := time.NewTimer(firstByteTimeout)
+        defer commandTimer.Stop()
 
         collecting := true
-        var sentinelSeen bool = false
-        var sentinelCount int = 0
-        var inactivityTimeoutCount int = 0
+        firstByteReceived := false
+        consecutiveInactivityTimeouts := 0
+        const maxConsecutiveInactivityTimeouts = 3
+
     COLLECT_LOOP:
         for collecting {
             select {
             case <-activityChannel:
-                inactivityTimeoutCount = 0
-                if !inactivityTimer.Stop() {
+                if !firstByteReceived {
+                    logger.Debug("First byte of output received", "command", cmd)
+                    firstByteReceived = true
+                }
+                consecutiveInactivityTimeouts = 0
+                if !commandTimer.Stop() {
                     select {
-                    case <-inactivityTimer.C:
+                    case <-commandTimer.C:
                     default:
                     }
                 }
-                inactivityTimer.Reset(inactivityTimeout)
+                commandTimer.Reset(inactivityTimeout)
 
             case line, ok := <-outputChannel:
                 if !ok {
@@ -452,36 +449,23 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
                     break COLLECT_LOOP
                 }
                 logger.Debug("Collecting output for command", "command", cmd, "line", strings.TrimSpace(line))
-
-                if strings.Contains(line, sentinel) {
-                    sentinelCount++
-                    logger.Debug("Sentinel found in output", "command", cmd, "line", strings.TrimSpace(line), "count", sentinelCount)
-                    if !sentinelSeen && sentinelCount >= 2 {
-                        logger.Info("Second sentinel instance detected. Marking command as complete.", "command", cmd)
-                        sentinelSeen = true
-                    }
-                    continue
-                }
                 currentCmdOutput += line
 
-            case <-inactivityTimer.C:
-                if sentinelSeen {
-                    logger.Info("Inactivity timer expired after second sentinel was seen. Output collection for command considered complete.", "command", cmd)
+            case <-commandTimer.C:
+                if !firstByteReceived {
+                    logger.Warn("First-byte timer expired. Command may have hung.", "command", cmd, "timeout", firstByteTimeout)
                     collecting = false
-                } else {
-                    inactivityTimeoutCount++
-                    logger.Debug("Inactivity timer expired but second sentinel was not seen.", "command", cmd, "consecutiveTimeouts", inactivityTimeoutCount)
-                    if inactivityTimeoutCount >= 4 {
-                        logger.Warn("Inactivity timer expired multiple times without command completion. Forcing continuation.", "command", cmd, "threshold", 4)
-                        collecting = false
-                    } else {
-                        inactivityTimer.Reset(inactivityTimeout)
-                    }
+                    break COLLECT_LOOP
                 }
 
-            case <-failsafeTimer.C:
-                logger.Warn("Failsafe timer expired. Command may have hung.", "command", cmd)
-                collecting = false
+                consecutiveInactivityTimeouts++
+                logger.Debug("Inactivity timer expired", "command", cmd, "consecutiveTimeouts", consecutiveInactivityTimeouts)
+                if consecutiveInactivityTimeouts >= maxConsecutiveInactivityTimeouts {
+                    logger.Info("Max consecutive inactivity timeouts reached. Command output collection is complete.", "command", cmd, "threshold", maxConsecutiveInactivityTimeouts)
+                    collecting = false
+                } else {
+                    commandTimer.Reset(inactivityTimeout)
+                }
 
             case errReader, ok := <-errorChannel:
                 if ok && errReader != nil {
@@ -506,7 +490,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
             return outputFiles, fmt.Errorf("failed to write to output file for %q: %w", cmd, err)
         }
         outputFile.Close()
-        logger.Info("Command output saved (multiple)", "command", cmd, "file", outputFilePath, "sentinelSeen", sentinelSeen)
+        logger.Info("Command output saved (multiple)", "command", cmd, "file", outputFilePath)
         outputFiles = append(outputFiles, outputFilePath)
     }
 
