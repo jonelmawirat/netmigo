@@ -7,10 +7,70 @@ If you come from a background of using Netmiko and are looking for a similar exp
 ### Core Features
 
 *   **Simplified SSH Connections**: Handles password/key authentication, connection timeouts, and retry logic.
+    Obvious authentication failures are treated as non-retryable, while transient transport errors can still use bounded retries.
 *   **Built-in Jump Server Support**: Natively connects to target devices through an SSH bastion or jump host.
 *   **Platform Abstraction**: Provides a consistent `DeviceService` interface for all supported platforms, including `CISCO_IOSXR`, `CISCO_IOSXE`, `CISCO_NXOS`, and `LINUX`.
 *   **Reliable Command Execution**: Intelligently captures command output to local files, with mechanisms to determine when a command has finished running.
 *   **Flexible Logging**: Uses Go's standard structured logging library (`slog`) for easy integration into any logging pipeline.
+
+## SSH Diagnostic Probe
+
+When you need to troubleshoot SSH auth against a real device path without running the full `GoNetTest` workbook flow, build the standalone `sshdiag` binary from this repo.
+
+Build locally:
+
+```bash
+go build -o ./bin/sshdiag ./cmd/sshdiag
+```
+
+Build a Linux amd64 artifact for a remote server:
+
+```bash
+GOOS=linux GOARCH=amd64 go build -o ./bin/sshdiag-linux-amd64 ./cmd/sshdiag
+```
+
+The probe can test direct or jump-host connections and supports `auto`, `password`, `keyboard-interactive`, and `key` auth modes. In `auto` mode it tries key first when a key is provided, then `keyboard-interactive`, then `password`, so the final log shows which auth path actually worked.
+
+Direct password example:
+
+```bash
+./bin/sshdiag \
+  --host 10.205.142.62 \
+  --username t-rbgunawan \
+  --password 'your-secret' \
+  --auth-mode keyboard-interactive \
+  --log-level debug
+```
+
+Direct key example:
+
+```bash
+./bin/sshdiag \
+  --host 10.205.142.62 \
+  --username t-rbgunawan \
+  --key-path /path/to/id_rsa \
+  --key-passphrase 'optional-passphrase' \
+  --auth-mode key \
+  --log-level debug
+```
+
+Jump-host example:
+
+```bash
+./bin/sshdiag \
+  --host 10.205.142.62 \
+  --username t-rbgunawan \
+  --password 'target-secret' \
+  --auth-mode auto \
+  --jump-host 10.174.6.11 \
+  --jump-username t-rbgunawan \
+  --jump-password 'jump-secret' \
+  --jump-auth-mode auto \
+  --log-level debug \
+  --log-file ./sshdiag.log
+```
+
+If you add `--command 'show version'`, the probe will run one post-auth interactive command and include the generated output file path in the final JSON summary. The summary is printed to stdout even when the probe fails so it can be copied back for analysis.
 
 
 ## Get Started Right Away with Cisco Sandbox
