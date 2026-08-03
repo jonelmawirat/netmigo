@@ -53,9 +53,9 @@ func main() {
     })
 
     cfg := netmigo.NewDeviceConfig(
-        "sandbox-iosxr-1.cisco.com",
-        netmigo.WithUsername("admin"),
-        netmigo.WithPassword("C1sco12345"),
+        "router.example.invalid",
+        netmigo.WithUsername("demo-user-7k2"),
+        netmigo.WithPassword("example-password-Q9m4"),
         netmigo.WithConnectionTimeout(15*time.Second),
     )
 
@@ -273,7 +273,7 @@ Direct password example:
 ```bash
 ./bin/sshdiag \
   --host 10.205.142.62 \
-  --username t-rbgunawan \
+  --username demo-operator-7k2 \
   --password 'your-secret' \
   --auth-mode keyboard-interactive \
   --log-level debug
@@ -284,7 +284,7 @@ Direct key example:
 ```bash
 ./bin/sshdiag \
   --host 10.205.142.62 \
-  --username t-rbgunawan \
+  --username demo-operator-7k2 \
   --key-path /path/to/id_rsa \
   --key-passphrase 'optional-passphrase' \
   --auth-mode key \
@@ -296,11 +296,11 @@ Jump-host example:
 ```bash
 ./bin/sshdiag \
   --host 10.205.142.62 \
-  --username t-rbgunawan \
+  --username demo-operator-7k2 \
   --password 'target-secret' \
   --auth-mode auto \
   --jump-host 10.174.6.11 \
-  --jump-username t-rbgunawan \
+  --jump-username demo-jump-user-4m9 \
   --jump-password 'jump-secret' \
   --jump-auth-mode auto \
   --log-level debug \
