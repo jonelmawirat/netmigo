@@ -72,6 +72,7 @@ func main() {
     outputFile, err := device.Execute(
         "show version",
         netmigo.WithTimeout(3*time.Second),
+        netmigo.WithOutputDirectory("/tmp/netmigo/ssh_command_outputs"),
     )
     if err != nil {
         log.Fatalf("execute: %v", err)
@@ -127,6 +128,7 @@ Command execution options:
 
 - `netmigo.WithTimeout(...)`
 - `netmigo.WithFirstByteTimeout(...)`
+- `netmigo.WithOutputDirectory(...)`
 
 ## Connection And Command Timing
 
@@ -147,6 +149,43 @@ It does not control how long a command is allowed to run after a session is esta
 ### `WithFirstByteTimeout`
 
 `WithFirstByteTimeout` limits how long the library will wait for the first byte of output from a command. This is useful when the remote command might hang before producing any data.
+
+### `WithOutputDirectory`
+
+`WithOutputDirectory` sets where command transcript files are created. The default is the relative directory `ssh_command_outputs`, resolved from the process working directory. In a container with a read-only working directory or root filesystem, pass an absolute path on a writable filesystem, such as `/tmp/netmigo/ssh_command_outputs`, or a mounted persistent volume:
+
+```go
+outputFile, err := device.Execute(
+    "show run",
+    netmigo.WithOutputDirectory("/tmp/netmigo/ssh_command_outputs"),
+)
+```
+
+The same option applies to `ExecuteMultiple`. Output file paths are returned in the same order as the commands:
+
+```go
+commands := []string{
+    "terminal length 0",
+    "show version",
+    "show run",
+    "show logging",
+}
+
+outputFiles, err := device.ExecuteMultiple(
+    commands,
+    netmigo.WithTimeout(3*time.Second),
+    netmigo.WithOutputDirectory("/tmp/netmigo/ssh_command_outputs"),
+)
+if err != nil {
+    log.Fatalf("execute multiple: %v", err)
+}
+
+for index, outputFile := range outputFiles {
+    fmt.Printf("%q saved to %s\n", commands[index], outputFile)
+}
+```
+
+If the container uses a read-only root filesystem, mount a writable temporary or persistent volume and pass that mount path to `WithOutputDirectory`. The library creates missing directories beneath the selected path.
 
 ### How Completion Is Detected
 
