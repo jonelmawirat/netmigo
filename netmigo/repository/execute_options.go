@@ -5,6 +5,7 @@ import "time"
 type ExecuteOptions struct {
     Timeout          time.Duration
     FirstByteTimeout time.Duration
+    OutputDirectory  string
 }
 
 type ExecuteOption func(*ExecuteOptions)
@@ -13,6 +14,7 @@ func NewExecuteOptions(opts ...ExecuteOption) *ExecuteOptions {
     options := &ExecuteOptions{
         Timeout:          10 * time.Second,
         FirstByteTimeout: 300 * time.Second,
+        OutputDirectory:  outputDirName,
     }
 
     for _, opt := range opts {
@@ -31,5 +33,11 @@ func WithTimeout(d time.Duration) ExecuteOption {
 func WithFirstByteTimeout(d time.Duration) ExecuteOption {
     return func(o *ExecuteOptions) {
         o.FirstByteTimeout = d
+    }
+}
+
+func WithOutputDirectory(path string) ExecuteOption {
+    return func(o *ExecuteOptions) {
+        o.OutputDirectory = path
     }
 }

@@ -41,12 +41,12 @@ func (r *sshRepositoryImpl) Disconnect(client *ssh.Client, jumpCfg *config.Devic
 
 func (r *sshRepositoryImpl) InteractiveExecute(client *ssh.Client, command string, opts ...ExecuteOption) (string, error) {
     options := NewExecuteOptions(opts...)
-    return ExecutorInteractiveExecute(client, r.logger, command, options.FirstByteTimeout, options.Timeout)
+    return executorInteractiveExecute(client, r.logger, command, options.FirstByteTimeout, options.Timeout, options.OutputDirectory)
 }
 
 func (r *sshRepositoryImpl) InteractiveExecuteMultiple(client *ssh.Client, commands []string, opts ...ExecuteOption) ([]string, error) {
     options := NewExecuteOptions(opts...)
-    return ExecutorInteractiveExecuteMultiple(client, r.logger, commands, options.FirstByteTimeout, options.Timeout)
+    return executorInteractiveExecuteMultiple(client, r.logger, commands, options.FirstByteTimeout, options.Timeout, options.OutputDirectory)
 }
 
 func (r *sshRepositoryImpl) ScpDownload(client *ssh.Client, remoteFilePath, localFilePath string) error {

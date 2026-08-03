@@ -17,7 +17,18 @@ import (
 
 const outputDirName = "ssh_command_outputs"
 
+func resolveOutputDirectory(outputDirectory string) string {
+    if outputDirectory != "" {
+        return outputDirectory
+    }
+    return outputDirName
+}
+
 func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command string, firstByteTimeout, inactivityTimeout time.Duration) (string, error) {
+    return executorInteractiveExecute(client, logger, command, firstByteTimeout, inactivityTimeout, outputDirName)
+}
+
+func executorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command string, firstByteTimeout, inactivityTimeout time.Duration, outputDirectory string) (string, error) {
     if client == nil {
         return "", errors.New("ssh client is nil; not connected")
     }
@@ -64,12 +75,13 @@ func ExecutorInteractiveExecute(client *ssh.Client, logger *slog.Logger, command
     }()
 
     done := make(chan error, 1)
-    if err := os.MkdirAll(outputDirName, 0755); err != nil {
-        logger.Error("Failed to create output directory", "directory", outputDirName, "error", err)
-        return "", fmt.Errorf("failed to create output directory %s: %w", outputDirName, err)
+    outputDirectory = resolveOutputDirectory(outputDirectory)
+    if err := os.MkdirAll(outputDirectory, 0755); err != nil {
+        logger.Error("Failed to create output directory", "directory", outputDirectory, "error", err)
+        return "", fmt.Errorf("failed to create output directory %s: %w", outputDirectory, err)
     }
     outputFileName := fmt.Sprintf("cmd_output_%s.txt", time.Now().Format("20060102150405.000000000"))
-    outputFilePath := filepath.Join(outputDirName, outputFileName)
+    outputFilePath := filepath.Join(outputDirectory, outputFileName)
     outputFile, err := os.Create(outputFilePath)
     if err != nil {
         logger.Error("Failed to create output file", "path", outputFilePath, "error", err)
@@ -265,6 +277,10 @@ func ExecutorScpDownload(client *ssh.Client, logger *slog.Logger, remoteFilePath
 }
 
 func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger, commands []string, firstByteTimeout, inactivityTimeout time.Duration) ([]string, error) {
+    return executorInteractiveExecuteMultiple(client, logger, commands, firstByteTimeout, inactivityTimeout, outputDirName)
+}
+
+func executorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger, commands []string, firstByteTimeout, inactivityTimeout time.Duration, outputDirectory string) ([]string, error) {
     if client == nil {
         return nil, errors.New("ssh client is nil; not connected")
     }
@@ -310,9 +326,10 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
     errorChannel := make(chan error, 1)
     activityChannel := make(chan struct{}, 1)
     var outputFiles []string
-    if err := os.MkdirAll(outputDirName, 0755); err != nil {
-        logger.Error("Failed to create output directory for multiple commands", "directory", outputDirName, "error", err)
-        return nil, fmt.Errorf("failed to create output directory %s: %w", outputDirName, err)
+    outputDirectory = resolveOutputDirectory(outputDirectory)
+    if err := os.MkdirAll(outputDirectory, 0755); err != nil {
+        logger.Error("Failed to create output directory for multiple commands", "directory", outputDirectory, "error", err)
+        return nil, fmt.Errorf("failed to create output directory %s: %w", outputDirectory, err)
     }
 
     go func() {
@@ -478,7 +495,7 @@ func ExecutorInteractiveExecuteMultiple(client *ssh.Client, logger *slog.Logger,
         }
 
         outputFileName := fmt.Sprintf("cmd_multi_output_%d_%s.txt", idx, time.Now().Format("20060102150405.000000000"))
-        outputFilePath := filepath.Join(outputDirName, outputFileName)
+        outputFilePath := filepath.Join(outputDirectory, outputFileName)
         outputFile, err := os.Create(outputFilePath)
         if err != nil {
             logger.Error("Failed to create output file for multiple command output", "command", cmd, "path", outputFilePath, "error", err)
